@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { createServer } = require('./server');
 const { init: initFirebase } = require('./services/firebaseService');
-const { scheduleReminders } = require('./jobs/reminderJob');
+const { scheduleReminders, scheduleKeepAlive } = require('./jobs/reminderJob');
 const { validateEnv } = require('./utils/validateEnv');
 const logger = require('./utils/logger');
 
@@ -24,6 +24,9 @@ async function main() {
 
   // Schedule daily reminders
   scheduleReminders();
+
+  // Keep-alive ping for Render free tier
+  scheduleKeepAlive(process.env.RENDER_EXTERNAL_URL);
 
   logger.info('Bot is ready! ✂️');
 }

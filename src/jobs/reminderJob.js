@@ -67,4 +67,23 @@ function scheduleReminders() {
   logger.info(`Reminder job scheduled at ${config.reminderCronTime} (${config.shop.timezone})`);
 }
 
-module.exports = { scheduleReminders, sendReminders };
+/**
+ * Ping the server every 14 minutes to prevent Render free tier from sleeping.
+ * Only runs in production.
+ */
+function scheduleKeepAlive(serverUrl) {
+  if (process.env.NODE_ENV !== 'production' || !serverUrl) return;
+
+  cron.schedule('*/14 * * * *', async () => {
+    try {
+      const https = require('https');
+      const http = require('http');
+      const client = serverUrl.startsWith('https') ? https : http;
+      client.get(`${serverUrl}/health`, () => {}).on('error', () => {});
+    } catch (_) {}
+  });
+
+  logger.info('Keep-alive job scheduled (every 14 min)');
+}
+
+module.exports = { scheduleReminders, sendReminders, scheduleKeepAlive };
