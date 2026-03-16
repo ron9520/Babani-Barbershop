@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(cd:*)",
+      "Bash(ngrok version:*)",
+      "Bash(npm install:*)",
+      "Read(//c/Users/Owner/AppData/Local/ngrok/**)",
+      "Read(//c/Users/Owner/.ngrok2/**)",
+      "Bash(where ngrok:*)",
+      "Bash(winget install:*)",
+      "Bash(powershell -Command \"Invoke-WebRequest -Uri 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip' -OutFile 'C:/Users/Owner/AppData/Local/ngrok/ngrok.zip'\" 2>&1)",
+      "Bash(powershell -Command \"Expand-Archive -Path 'C:/Users/Owner/AppData/Local/ngrok/ngrok.zip' -DestinationPath 'C:/Users/Owner/AppData/Local/ngrok/' -Force\" 2>&1 && ls /c/Users/Owner/AppData/Local/ngrok/)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd //c \"taskkill /PID 12380 /F\")",
+      "Bash(cmd //c \"taskkill /F /IM node.exe\" 2>&1; echo \"done\")"
+    ]
+  }
+}

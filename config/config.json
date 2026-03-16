@@ -1,0 +1,28 @@
+{
+  "shop": {
+    "name": "מספרת בבאני",
+    "barberName": "חיים",
+    "timezone": "Asia/Jerusalem"
+  },
+  "workingHours": {
+    "sunday":    { "open": "09:00", "close": "19:00" },
+    "monday":    { "open": "09:00", "close": "19:00" },
+    "tuesday":   { "open": "09:00", "close": "19:00" },
+    "wednesday": { "open": "09:00", "close": "19:00" },
+    "thursday":  { "open": "09:00", "close": "20:00" },
+    "friday":    { "open": "09:00", "close": "14:00" },
+    "saturday":  null
+  },
+  "slotDurationMinutes": 30,
+  "bookingWindowDays": 14,
+  "services": [
+    { "id": "haircut",       "name": "תספורת",               "price": 60,  "durationMinutes": 30 },
+    { "id": "beard",         "name": "עיצוב זקן",             "price": 40,  "durationMinutes": 30 },
+    { "id": "haircut_beard", "name": "תספורת + עיצוב זקן",   "price": 90,  "durationMinutes": 60 },
+    { "id": "kids",          "name": "תספורת ילדים (עד 12)", "price": 45,  "durationMinutes": 30 },
+    { "id": "buzz",          "name": "גילוח מכונה",           "price": 35,  "durationMinutes": 20 }
+  ],
+  "reminderHoursBefore": 20,
+  "reminderCronTime": "08:00",
+  "sessionTimeoutMinutes": 15
+}

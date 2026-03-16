@@ -1,0 +1,27 @@
+{
+  "name": "babani-barber-shop-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp appointment bot for Babani Barber Shop",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test:calendar": "node scripts/testCalendar.js",
+    "tunnel": "node scripts/startWithNgrok.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "firebase-admin": "^11.11.0",
+    "googleapis": "^128.0.0",
+    "luxon": "^3.4.4",
+    "node-cron": "^3.0.3",
+    "twilio": "^4.19.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "ngrok": "^5.0.0-beta.2",
+    "nodemon": "^3.0.2"
+  }
+}
