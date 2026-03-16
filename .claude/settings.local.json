@@ -14,7 +14,8 @@
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
       "Bash(cmd //c \"taskkill /PID 12380 /F\")",
-      "Bash(cmd //c \"taskkill /F /IM node.exe\" 2>&1; echo \"done\")"
+      "Bash(cmd //c \"taskkill /F /IM node.exe\" 2>&1; echo \"done\")",
+      "Bash(curl:*)"
     ]
   }
 }

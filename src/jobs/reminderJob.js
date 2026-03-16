@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { getTomorrowAppointments } = require('../services/calendarService');
 const { getAppointmentsInRange } = require('../services/firebaseService');
-const { sendMessage } = require('../services/twilioService');
+const { sendMessage } = require('../services/whatsappService');
 const responses = require('../bot/responses');
 const { nowInIsrael, fromISO } = require('../utils/timeUtils');
 const logger = require('../utils/logger');

@@ -2,10 +2,10 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { DateTime } = require('luxon');
-const { webhookHandler } = require('./bot/messageHandler');
+const { webhookHandler, webhookVerify } = require('./bot/messageHandler');
 const calendarService = require('./services/calendarService');
 const firebaseService = require('./services/firebaseService');
-const twilioService = require('./services/twilioService');
+const whatsappService = require('./services/whatsappService');
 const { generateSlots, getAvailableDates, getWorkingHours, fromISO, formatDate, formatTime, TZ } = require('./utils/timeUtils');
 const logger = require('./utils/logger');
 const config = require('../config/config.json');
@@ -22,7 +22,8 @@ function createServer() {
   // Health check
   app.get('/health', (req, res) => res.json({ status: 'ok', shop: 'מספרת בבאני' }));
 
-  // Twilio WhatsApp webhook
+  // Meta WhatsApp webhook
+  app.get('/webhook', webhookVerify);
   app.post('/webhook', webhookHandler);
 
   // ─── Booking API ────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ function createServer() {
 
       if (!start.isValid) return res.status(400).json({ error: 'Invalid date/time' });
 
-      const normalizedPhone = twilioService.normalizePhone(phone);
+      const normalizedPhone = whatsappService.normalizePhone(phone);
 
       // Create calendar event (includes availability double-check)
       const eventId = await calendarService.createAppointment({
@@ -139,14 +140,14 @@ function createServer() {
           `📍 ${config.shop.name}\n` +
           `_ביום שלפני התור תקבל תזכורת_\n\n` +
           `כדי לבטל את התור שלח *ביטול* להודעה זו`;
-        await twilioService.sendMessage(normalizedPhone, customerMsg);
+        await whatsappService.sendMessage(normalizedPhone, customerMsg);
       } catch (err) {
         logger.error('Failed to send customer confirmation', { error: err.message });
       }
 
       // Send WhatsApp to barber
       try {
-        await twilioService.notifyBarber({
+        await whatsappService.notifyBarber({
           customerName,
           serviceName: service.name,
           servicePrice: service.price,

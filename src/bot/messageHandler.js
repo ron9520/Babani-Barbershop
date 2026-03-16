@@ -1,38 +1,51 @@
 const { handleMessage } = require('./flowController');
-const { sendMessage } = require('../services/twilioService');
+const { sendMessage } = require('../services/whatsappService');
 const responses = require('./responses');
 const logger = require('../utils/logger');
 
 /**
- * Express route handler for Twilio WhatsApp webhook.
+ * GET /webhook — Meta webhook verification
+ */
+function webhookVerify(req, res) {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    logger.info('Meta webhook verified');
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+}
+
+/**
+ * POST /webhook — incoming WhatsApp messages from Meta
  */
 async function webhookHandler(req, res) {
-  // Respond to Twilio immediately (must be < 5s)
-  res.status(200).send('<Response></Response>');
-
-  const from = req.body.From;
-  const body = req.body.Body;
-
-  if (!from || !body) {
-    logger.warn('Webhook received without From or Body', req.body);
-    return;
-  }
-
-  logger.info('Incoming message', { from, body: body.substring(0, 80) });
+  // Acknowledge immediately
+  res.sendStatus(200);
 
   try {
+    const entry = req.body?.entry?.[0];
+    const change = entry?.changes?.[0]?.value;
+    const message = change?.messages?.[0];
+
+    if (!message || message.type !== 'text') return;
+
+    const from = message.from; // e.g. "972523385554"
+    const body = message.text?.body;
+
+    if (!from || !body) return;
+
+    logger.info('Incoming message', { from, body: body.substring(0, 80) });
+
     const reply = await handleMessage(from, body);
     if (reply) {
       await sendMessage(from, reply);
     }
   } catch (err) {
-    logger.error('Error handling message', { from, error: err.message, stack: err.stack });
-    try {
-      await sendMessage(from, responses.error());
-    } catch (sendErr) {
-      logger.error('Failed to send error message to user', { from, error: sendErr.message });
-    }
+    logger.error('Error handling message', { error: err.message, stack: err.stack });
   }
 }
 
-module.exports = { webhookHandler };
+module.exports = { webhookHandler, webhookVerify };
