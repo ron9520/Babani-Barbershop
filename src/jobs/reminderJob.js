@@ -41,7 +41,7 @@ async function sendReminders() {
         await sendMessage(apt.phone, msg);
         logger.info('Reminder sent', { phone: apt.phone, customerName: apt.customerName });
 
-        // Small delay to avoid Twilio rate limiting
+        // Small delay between messages
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (err) {
         logger.error('Failed to send reminder', { phone: apt.phone, error: err.message });

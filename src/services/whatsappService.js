@@ -1,53 +1,48 @@
 const logger = require('../utils/logger');
 
-const GRAPH_URL = 'https://graph.facebook.com/v19.0';
+const GREEN_API_URL = 'https://api.green-api.com';
 
 /**
- * Normalize a phone number to Meta format (digits only, no +).
+ * Normalize a phone number to digits-only format (no +, no @c.us).
  * e.g. "0523385554" → "972523385554"
  *      "+972523385554" → "972523385554"
- *      "whatsapp:+972523385554" → "972523385554"
+ *      "972523385554@c.us" → "972523385554"
  */
 function normalizePhone(raw) {
   if (!raw) return null;
-  let num = raw.replace('whatsapp:', '').replace(/\s|-/g, '');
+  let num = raw.replace('whatsapp:', '').replace('@c.us', '').replace(/\s|-/g, '');
   if (num.startsWith('+')) num = num.slice(1);
   if (num.startsWith('05')) num = '972' + num.slice(1);
   return num;
 }
 
 /**
- * Send a WhatsApp text message via Meta Cloud API.
+ * Send a WhatsApp text message via Green-API.
  * @param {string} to   - phone number (any format)
  * @param {string} body - message text
  */
 async function sendMessage(to, body) {
   const phone = normalizePhone(to);
-  const phoneId = process.env.WHATSAPP_PHONE_ID;
-  const token = process.env.WHATSAPP_TOKEN;
+  const instanceId = process.env.GREEN_API_INSTANCE_ID;
+  const token = process.env.GREEN_API_TOKEN;
 
-  const res = await fetch(`${GRAPH_URL}/${phoneId}/messages`, {
+  const res = await fetch(`${GREEN_API_URL}/waInstance${instanceId}/sendMessage/${token}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: phone,
-      type: 'text',
-      text: { body }
+      chatId: `${phone}@c.us`,
+      message: body
     })
   });
 
   const data = await res.json();
 
   if (!res.ok) {
-    logger.error('Meta API error', { to: phone, error: data });
-    throw new Error(data.error?.message || 'Meta API error');
+    logger.error('Green-API error', { to: phone, error: data });
+    throw new Error(data.message || 'Green-API error');
   }
 
-  logger.info('WhatsApp message sent', { to: phone, messageId: data.messages?.[0]?.id });
+  logger.info('WhatsApp message sent', { to: phone, messageId: data.idMessage });
   return data;
 }
 

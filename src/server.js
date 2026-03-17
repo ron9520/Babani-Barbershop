@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { DateTime } = require('luxon');
-const { webhookHandler, webhookVerify } = require('./bot/messageHandler');
+const { webhookHandler } = require('./bot/messageHandler');
 const calendarService = require('./services/calendarService');
 const firebaseService = require('./services/firebaseService');
 const whatsappService = require('./services/whatsappService');
@@ -22,22 +22,10 @@ function createServer() {
   // Health check
   app.get('/health', (req, res) => res.json({ status: 'ok', shop: 'מספרת בבאני' }));
 
-  // Meta WhatsApp webhook
-  app.get('/webhook', webhookVerify);
+  // Green-API webhook
   app.post('/webhook', webhookHandler);
 
   // ─── Booking API ────────────────────────────────────────────────────────────
-
-  // GET /api/sandbox-info — sandbox join details (dev only)
-  app.get('/api/sandbox-info', (req, res) => {
-    if (process.env.NODE_ENV === 'production') {
-      return res.json({ sandbox: false });
-    }
-    const from = (process.env.TWILIO_WHATSAPP_FROM || '').replace('whatsapp:', '');
-    const word = process.env.TWILIO_SANDBOX_WORD || '';
-    if (!from || !word) return res.json({ sandbox: false });
-    res.json({ sandbox: true, number: from, word });
-  });
 
   // GET /api/services — list all services
   app.get('/api/services', (req, res) => {
