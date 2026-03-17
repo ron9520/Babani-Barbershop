@@ -385,6 +385,28 @@
 
 </div>
 
+<!-- Admin Panel -->
+<div style="margin-top: 32px; width: 100%; max-width: 480px; text-align: center;">
+  <button onclick="toggleAdmin()" style="background:none; border:none; color: var(--border); font-size:0.75rem; cursor:pointer; padding:4px 8px;">
+    ⚙️ Admin
+  </button>
+</div>
+
+<div id="adminPanel" style="display:none; margin-top:12px; width:100%; max-width:480px;">
+  <div class="card" style="border-color:#444;">
+    <h2 style="color:#888; font-size:1rem;">🔧 פאנל ניהול</h2>
+    <div class="form-group">
+      <label>מפתח Admin</label>
+      <input type="password" id="adminKey" placeholder="הכנס מפתח" style="text-align:left; direction:ltr;" />
+    </div>
+    <button class="btn" onclick="resetAll()"
+      style="background:#5a1a1a; color:#f0a0a0; border:1px solid #8a3a3a; margin-top:4px;">
+      🗑️ מחק את כל התורים והלוח שנה
+    </button>
+    <div id="adminMsg" style="margin-top:12px; font-size:0.9rem; text-align:center; display:none;"></div>
+  </div>
+</div>
+
 <script>
   // ─── State ────────────────────────────────────────────────────────────────
   const state = {
@@ -696,6 +718,42 @@
       errEl.classList.add('show');
       btn.disabled = false;
       btn.innerHTML = 'קבע תור';
+    }
+  }
+
+  // ─── Admin ────────────────────────────────────────────────────────────────
+  function toggleAdmin() {
+    const panel = document.getElementById('adminPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function resetAll() {
+    const key = document.getElementById('adminKey').value.trim();
+    const msgEl = document.getElementById('adminMsg');
+    if (!key) {
+      msgEl.style.display = 'block';
+      msgEl.style.color = '#e55';
+      msgEl.textContent = 'הכנס מפתח Admin';
+      return;
+    }
+
+    msgEl.style.display = 'block';
+    msgEl.style.color = '#888';
+    msgEl.textContent = 'מוחק...';
+
+    try {
+      const res = await fetch(`/api/admin/reset?key=${encodeURIComponent(key)}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        msgEl.style.color = '#e55';
+        msgEl.textContent = res.status === 403 ? 'מפתח שגוי' : 'שגיאה: ' + (data.error || '');
+      } else {
+        msgEl.style.color = '#4c4';
+        msgEl.textContent = `נמחקו ${data.appointments} תורים ו-${data.events} אירועים בלוח השנה`;
+      }
+    } catch (e) {
+      msgEl.style.color = '#e55';
+      msgEl.textContent = 'שגיאת תקשורת';
     }
   }
 </script>
