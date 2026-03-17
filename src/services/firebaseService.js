@@ -101,6 +101,21 @@ async function getAppointmentsInRange(startISO, endISO) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+async function clearAllData() {
+  const db = getDb();
+  const [appointmentsSnap, sessionsSnap] = await Promise.all([
+    db.collection('appointments').get(),
+    db.collection('sessions').get()
+  ]);
+
+  const batch = db.batch();
+  appointmentsSnap.docs.forEach(doc => batch.delete(doc.ref));
+  sessionsSnap.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+
+  return appointmentsSnap.size;
+}
+
 module.exports = {
   init,
   getSession,
@@ -110,5 +125,6 @@ module.exports = {
   getAppointmentById,
   getAppointmentByPhone,
   cancelAppointment,
-  getAppointmentsInRange
+  getAppointmentsInRange,
+  clearAllData
 };

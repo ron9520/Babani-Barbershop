@@ -154,6 +154,25 @@ function createServer() {
     }
   });
 
+  // POST /api/admin/reset — delete all test data (Firestore + Calendar)
+  app.post('/api/admin/reset', async (req, res) => {
+    const key = req.query.key || req.body?.key;
+    if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    try {
+      const [appointments, events] = await Promise.all([
+        firebaseService.clearAllData(),
+        calendarService.deleteAllUpcomingEvents()
+      ]);
+      logger.info('Admin reset performed', { appointments, events });
+      res.json({ success: true, appointments, events });
+    } catch (err) {
+      logger.error('Admin reset failed', { error: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // 404
   app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

@@ -117,10 +117,29 @@ async function getTomorrowAppointments() {
   return events;
 }
 
+async function deleteAllUpcomingEvents() {
+  const now = DateTime.now().setZone(TZ);
+  const future = now.plus({ days: 30 });
+
+  const res = await getCalendar().events.list({
+    calendarId: CALENDAR_ID,
+    timeMin: now.toISO(),
+    timeMax: future.toISO(),
+    singleEvents: true
+  });
+
+  const events = res.data.items || [];
+  for (const event of events) {
+    await getCalendar().events.delete({ calendarId: CALENDAR_ID, eventId: event.id });
+  }
+  return events.length;
+}
+
 module.exports = {
   isSlotAvailable,
   createAppointment,
   deleteAppointment,
   getBusySlotsForDate,
-  getTomorrowAppointments
+  getTomorrowAppointments,
+  deleteAllUpcomingEvents
 };
