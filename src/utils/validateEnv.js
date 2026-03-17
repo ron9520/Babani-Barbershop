@@ -1,8 +1,6 @@
 const logger = require('./logger');
 
 const REQUIRED = [
-  'GREEN_API_INSTANCE_ID',
-  'GREEN_API_TOKEN',
   'BARBER_PHONE',
   'FIREBASE_PROJECT_ID',
   'FIREBASE_CLIENT_EMAIL',

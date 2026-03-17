@@ -26,6 +26,11 @@ async function sendMessage(to, body) {
   const instanceId = process.env.GREEN_API_INSTANCE_ID;
   const token = process.env.GREEN_API_TOKEN;
 
+  if (!instanceId || !token) {
+    logger.warn('Green-API not configured — skipping WhatsApp message', { to: phone });
+    return null;
+  }
+
   const res = await fetch(`${GREEN_API_URL}/waInstance${instanceId}/sendMessage/${token}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
