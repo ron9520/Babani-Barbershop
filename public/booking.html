@@ -34,6 +34,9 @@
     header {
       text-align: center;
       margin-bottom: 28px;
+      position: relative;
+      width: 100%;
+      max-width: 480px;
     }
     header h1 {
       font-size: 2rem;
@@ -45,6 +48,71 @@
       margin-top: 4px;
       font-size: 0.95rem;
     }
+    .home-btn {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--gold);
+      border-radius: 8px;
+      width: 38px;
+      height: 38px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s;
+    }
+    .home-btn:hover { border-color: var(--gold); }
+
+    /* Contact card */
+    .contact-card {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .contact-card h3 {
+      color: var(--gold);
+      font-size: 0.95rem;
+      margin-bottom: 2px;
+    }
+    .contact-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+    .contact-row span.icon { font-size: 1.1rem; }
+    .contact-row a { color: var(--text); text-decoration: none; }
+    .contact-row a:hover { color: var(--gold); }
+    .waze-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #1a3a1a;
+      border: 1px solid #2d6a2d;
+      color: #6fcf6f;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s;
+      margin-top: 4px;
+    }
+    .waze-btn:hover { background: #1f4a1f; }
 
     /* Progress bar */
     .progress {
@@ -289,6 +357,7 @@
 <body>
 
 <header>
+  <button class="home-btn" onclick="resetBooking()" title="חזור לתפריט הראשי">🏠</button>
   <h1>✂️ מספרת בבאני</h1>
   <p>קביעת תור מהירה ונוחה</p>
 </header>
@@ -385,6 +454,22 @@
     </div>
   </div>
 
+</div>
+
+<!-- Contact Card -->
+<div class="contact-card">
+  <h3>📞 יצירת קשר</h3>
+  <div class="contact-row">
+    <span class="icon">📱</span>
+    <a href="tel:0524323233">052-432-3233</a>
+  </div>
+  <div class="contact-row">
+    <span class="icon">📍</span>
+    <span>מעגל השלום 9, ראשון לציון (פרס נובל)</span>
+  </div>
+  <a class="waze-btn" href="https://waze.com/ul?q=מעגל+השלום+9+ראשון+לציון&navigate=yes" target="_blank">
+    🗺️ נווט עם Waze
+  </a>
 </div>
 
 <!-- Admin Panel -->
