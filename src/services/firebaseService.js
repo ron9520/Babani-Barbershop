@@ -259,6 +259,14 @@ async function getAdminConfig() {
   return doc.exists ? doc.data() : null;
 }
 
+async function saveAdminFCMToken(token) {
+  await getDb().collection('admin_config').doc('settings').set(
+    { fcmToken: token },
+    { merge: true }
+  );
+  logger.info('Admin FCM token saved');
+}
+
 async function updateDefaultHours(day, open, close) {
   await getDb().collection('admin_config').doc('settings').set(
     { workingHours: { [day]: { open, close } } },
@@ -483,6 +491,7 @@ module.exports = {
   deleteScheduleOverride,
   getUpcomingOverrides,
   getAdminConfig,
+  saveAdminFCMToken,
   updateDefaultHours,
   getCustomerProfile,
   upsertCustomerProfile,

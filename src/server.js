@@ -8,6 +8,7 @@ const firebaseService = require('./services/firebaseService');
 const whatsappService = require('./services/whatsappService');
 const authService = require('./services/authService');
 const statsService = require('./services/statsService');
+const notificationService = require('./services/notificationService');
 const { generateSlots, getAvailableDates, getEffectiveWorkingHours, getWorkingHours, fromISO, formatDate, formatTime, nowInIsrael, TZ } = require('./utils/timeUtils');
 const logger = require('./utils/logger');
 const config = require('../config/config.json');
@@ -71,6 +72,32 @@ function createServer() {
     }
     const token = authService.signAdminToken();
     res.json({ success: true, token });
+  });
+
+  // GET /api/firebase-config — public Firebase Web config (safe to expose)
+  app.get('/api/firebase-config', (req, res) => {
+    res.json({
+      apiKey:            process.env.FIREBASE_WEB_API_KEY     || '',
+      authDomain:        `${process.env.FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      projectId:         process.env.FIREBASE_PROJECT_ID      || '',
+      storageBucket:     `${process.env.FIREBASE_PROJECT_ID}.appspot.com`,
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+      appId:             process.env.FIREBASE_WEB_APP_ID      || '',
+      vapidKey:          process.env.FIREBASE_VAPID_KEY       || ''
+    });
+  });
+
+  // POST /api/admin/fcm-token — save FCM push token for admin device
+  app.post('/api/admin/fcm-token', adminAuth, async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token) return res.status(400).json({ error: 'token required' });
+      await firebaseService.saveAdminFCMToken(token);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('POST /api/admin/fcm-token error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
   });
 
   // POST /api/customer/send-otp
@@ -238,6 +265,10 @@ function createServer() {
 
       // Notify barber
       try { await whatsappService.notifyBarberCancellation(apt); } catch (_) {}
+      notificationService.sendToAdmin(
+        '❌ תור בוטל',
+        `${apt.customerName} ביטל את התור ל-${apt.timeDisplay} (${apt.dateDisplay})`
+      ).catch(() => {});
 
       res.json({ success: true });
     } catch (err) {
@@ -478,6 +509,12 @@ function createServer() {
       } catch (err) {
         logger.error('Failed to notify barber', { error: err.message });
       }
+
+      // Push notification to barber's device
+      notificationService.sendToAdmin(
+        '📅 תור חדש נקבע',
+        `${customerName} — ${service.name} ב-${timeDisplay} (${dateDisplay})`
+      ).catch(() => {});
 
       res.json({ success: true, dateDisplay, timeDisplay, serviceName: service.name });
     } catch (err) {

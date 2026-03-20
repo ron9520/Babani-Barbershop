@@ -366,6 +366,7 @@
         adminPin = pin;
         sessionStorage.setItem('adminPin', pin);
         showApp();
+        initPushNotifications();
       } else {
         document.getElementById('pinError').textContent = 'קוד שגוי, נסה שוב';
         pin = '';
@@ -531,6 +532,68 @@
     }
   }
 
+  // ─── Push Notifications (FCM) ─────────────────────────────────────────────
+  let _fcmApp = null;
+
+  async function initPushNotifications() {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    try {
+      const cfg = await fetch('/api/firebase-config').then(r => r.json());
+      if (!cfg.apiKey || !cfg.vapidKey) return; // not yet configured
+
+      // Lazy-load Firebase JS SDK
+      if (!_fcmApp) {
+        await Promise.all([
+          loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js'),
+          loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js')
+        ]);
+        _fcmApp = firebase.initializeApp(cfg, 'admin-push');
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return;
+
+      // Register the FCM service worker with config in query string
+      const swParams = new URLSearchParams({
+        apiKey: cfg.apiKey, authDomain: cfg.authDomain, projectId: cfg.projectId,
+        storageBucket: cfg.storageBucket, messagingSenderId: cfg.messagingSenderId, appId: cfg.appId
+      });
+      const swReg = await navigator.serviceWorker.register(
+        `/firebase-messaging-sw.js?${swParams}`, { scope: '/' }
+      );
+
+      const messaging = firebase.messaging(_fcmApp);
+      const token = await messaging.getToken({ vapidKey: cfg.vapidKey, serviceWorkerRegistration: swReg });
+      if (!token) return;
+
+      await fetch('/api/admin/fcm-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        body: JSON.stringify({ token })
+      });
+      console.log('[FCM] Push notifications active');
+
+      // Handle foreground notifications
+      messaging.onMessage(payload => {
+        const { title, body } = payload.notification || {};
+        new Notification(title || 'מספרת בבאני', {
+          body: body || '', icon: '/icons/icon.svg', dir: 'rtl'
+        });
+      });
+    } catch (err) {
+      console.warn('[FCM] Push setup failed:', err.message);
+    }
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) return resolve();
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
   // ─── Init ─────────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
     const saved = sessionStorage.getItem('adminPin');
@@ -538,6 +601,7 @@
       adminPin = saved;
       pin = saved;
       showApp();
+      initPushNotifications();
     }
   });
 </script>
