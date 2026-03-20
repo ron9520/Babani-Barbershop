@@ -100,6 +100,22 @@ function createServer() {
     }
   });
 
+  // POST /api/customer/phone-login — login by phone only (no OTP)
+  app.post('/api/customer/phone-login', async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ error: 'phone required' });
+      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const blocked = await firebaseService.isCustomerBlocked(normalizedPhone);
+      if (blocked) return res.status(403).json({ error: 'מספר זה חסום' });
+      const token = authService.signCustomerToken(normalizedPhone);
+      res.json({ token, phone: normalizedPhone });
+    } catch (err) {
+      logger.error('POST /api/customer/phone-login error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
   // POST /api/customer/send-otp
   app.post('/api/customer/send-otp', async (req, res) => {
     try {

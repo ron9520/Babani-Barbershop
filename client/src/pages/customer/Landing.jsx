@@ -33,6 +33,11 @@ export default function Landing() {
 
 // ── Home screen ─────────────────────────────────────────────────────────────
 
+const PHONE     = '0524323233';
+const PHONE_INT = '972524323233';
+const ADDRESS   = 'מעגל השלום 9 ראשון לציון';
+const WAZE_URL  = `https://waze.com/ul?q=${encodeURIComponent(ADDRESS + ' פרס נובל')}&navigate=yes`;
+
 function Home({ onBook, onMyApts }) {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
@@ -51,10 +56,34 @@ function Home({ onBook, onMyApts }) {
         </button>
       </div>
 
-      {/* Footer */}
-      <p className="text-center text-muted text-xs py-4">
-        © {new Date().getFullYear()} מספרת בבאני
-      </p>
+      {/* Contact bar */}
+      <div className="px-4 pb-safe pb-6">
+        <div className="card flex items-center justify-around gap-2 py-3">
+          {/* Phone */}
+          <a href={`tel:${PHONE}`}
+            className="flex flex-col items-center gap-1 text-primary active:opacity-70 transition-opacity">
+            <span className="text-2xl">📞</span>
+            <span className="text-xs font-medium">{PHONE}</span>
+          </a>
+
+          <div className="w-px h-10 bg-border" />
+
+          {/* Address */}
+          <div className="flex flex-col items-center gap-1 text-muted text-xs text-center">
+            <span className="text-2xl">📍</span>
+            <span>{ADDRESS}</span>
+          </div>
+
+          <div className="w-px h-10 bg-border" />
+
+          {/* Waze */}
+          <a href={WAZE_URL} target="_blank" rel="noopener noreferrer"
+            className="flex flex-col items-center gap-1 text-primary active:opacity-70 transition-opacity">
+            <span className="text-2xl">🗺️</span>
+            <span className="text-xs font-medium">Waze</span>
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
