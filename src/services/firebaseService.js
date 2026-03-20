@@ -31,7 +31,6 @@ async function getSession(phone) {
   if (!doc.exists) return null;
 
   const data = doc.data();
-  // Auto-expire sessions
   const timeoutMs = config.sessionTimeoutMinutes * 60 * 1000;
   if (Date.now() - data.updatedAt > timeoutMs) {
     await deleteSession(phone);
@@ -83,12 +82,15 @@ async function getAppointmentById(appointmentId) {
 }
 
 async function cancelAppointment(appointmentId) {
-  await getDb().collection('appointments').doc(appointmentId).update({ status: 'cancelled' });
+  await getDb().collection('appointments').doc(appointmentId).update({
+    status: 'cancelled',
+    cancelledAt: admin.firestore.FieldValue.serverTimestamp()
+  });
   logger.info('Appointment cancelled in Firestore', { id: appointmentId });
 }
 
 /**
- * Get all confirmed appointments for a given date range (ISO strings).
+ * Get CONFIRMED appointments for reminders / bot logic.
  */
 async function getAppointmentsInRange(startISO, endISO) {
   const snap = await getDb()
@@ -97,12 +99,36 @@ async function getAppointmentsInRange(startISO, endISO) {
     .where('startISO', '>=', startISO)
     .where('startISO', '<', endISO)
     .get();
-
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-async function updateAppointmentStatus(id, status) {
-  const update = { status };
+/**
+ * Get ALL appointments (all statuses) for admin panel.
+ * Uses only startISO range — no composite index needed.
+ */
+async function getAppointmentsInRangeAll(startISO, endISO) {
+  const snap = await getDb()
+    .collection('appointments')
+    .where('startISO', '>=', startISO)
+    .where('startISO', '<', endISO)
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Get all appointments (upcoming + history) for a customer phone.
+ */
+async function getAllAppointmentsByPhone(phone) {
+  const snap = await getDb()
+    .collection('appointments')
+    .where('phone', '==', phone)
+    .orderBy('startISO', 'desc')
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function updateAppointmentStatus(id, status, extra = {}) {
+  const update = { status, ...extra };
   if (status === 'completed') update.completedAt = admin.firestore.FieldValue.serverTimestamp();
   if (status === 'cancelled') update.cancelledAt = admin.firestore.FieldValue.serverTimestamp();
   await getDb().collection('appointments').doc(id).update(update);
@@ -168,17 +194,13 @@ async function updateService(id, fields) {
 }
 
 async function deleteService(id) {
-  // Soft-delete: mark as inactive
   await getDb().collection('services').doc(id).update({ active: false });
   logger.info('Service deactivated', { id });
 }
 
-/**
- * One-time migration: seeds Firestore `services` from config.json if collection is empty.
- */
 async function migrateServicesIfNeeded(configServices) {
   const snap = await getDb().collection('services').limit(1).get();
-  if (!snap.empty) return; // already migrated
+  if (!snap.empty) return;
 
   const batch = getDb().batch();
   configServices.forEach((s, i) => {
@@ -230,7 +252,7 @@ async function getUpcomingOverrides() {
   return snap.docs.map(d => d.data());
 }
 
-// ─── Admin Config (default working hours) ─────────────────────────────────────
+// ─── Admin Config ─────────────────────────────────────────────────────────────
 
 async function getAdminConfig() {
   const doc = await getDb().collection('admin_config').doc('settings').get();
@@ -245,6 +267,197 @@ async function updateDefaultHours(day, open, close) {
   logger.info('Default hours updated', { day, open, close });
 }
 
+// ─── Customer Profile ─────────────────────────────────────────────────────────
+
+/**
+ * Get or build customer profile from appointments collection.
+ * customers/{phone} stores: name, notes, isBlocked, blockedReason, visitCount, lastVisitDate
+ */
+async function getCustomerProfile(phone) {
+  const [profileDoc, appointmentsSnap] = await Promise.all([
+    getDb().collection('customers').doc(phone).get(),
+    getDb().collection('appointments')
+      .where('phone', '==', phone)
+      .where('status', '==', 'completed')
+      .get()
+  ]);
+
+  const profile = profileDoc.exists ? profileDoc.data() : {};
+  const visitCount = appointmentsSnap.size;
+
+  // Get last appointment (any status) for the name
+  const allSnap = await getDb().collection('appointments')
+    .where('phone', '==', phone)
+    .orderBy('startISO', 'desc')
+    .limit(1)
+    .get();
+
+  const lastApt = allSnap.empty ? null : allSnap.docs[0].data();
+
+  return {
+    phone,
+    name: profile.name || lastApt?.customerName || null,
+    notes: profile.notes || '',
+    isBlocked: profile.isBlocked || false,
+    blockedReason: profile.blockedReason || '',
+    visitCount,
+    lastVisitDate: lastApt?.dateDisplay || null,
+    preferredService: profile.preferredService || lastApt?.serviceName || null
+  };
+}
+
+async function upsertCustomerProfile(phone, fields) {
+  await getDb().collection('customers').doc(phone).set(fields, { merge: true });
+  logger.info('Customer profile updated', { phone, fields: Object.keys(fields) });
+}
+
+async function blockCustomer(phone, reason) {
+  await upsertCustomerProfile(phone, {
+    isBlocked: true,
+    blockedReason: reason || '',
+    blockedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  logger.info('Customer blocked', { phone, reason });
+}
+
+async function unblockCustomer(phone) {
+  await upsertCustomerProfile(phone, {
+    isBlocked: false,
+    blockedReason: '',
+    blockedAt: null
+  });
+  logger.info('Customer unblocked', { phone });
+}
+
+async function isCustomerBlocked(phone) {
+  const doc = await getDb().collection('customers').doc(phone).get();
+  return doc.exists && doc.data().isBlocked === true;
+}
+
+// ─── Waiting List ─────────────────────────────────────────────────────────────
+
+async function addToWaitingList({ date, phone, customerName, serviceId, serviceName }) {
+  // Check if already in waiting list for this date
+  const existing = await getDb().collection('waiting_list')
+    .where('date', '==', date)
+    .where('phone', '==', phone)
+    .get();
+  if (!existing.empty) return existing.docs[0].id;
+
+  const ref = await getDb().collection('waiting_list').add({
+    date,
+    phone,
+    customerName,
+    serviceId,
+    serviceName,
+    notified: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  logger.info('Added to waiting list', { date, phone });
+  return ref.id;
+}
+
+async function getWaitingListForDate(date) {
+  const snap = await getDb().collection('waiting_list')
+    .where('date', '==', date)
+    .where('notified', '==', false)
+    .orderBy('createdAt', 'asc')
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function removeFromWaitingList(id) {
+  await getDb().collection('waiting_list').doc(id).delete();
+  logger.info('Removed from waiting list', { id });
+}
+
+async function markWaitingListNotified(id) {
+  await getDb().collection('waiting_list').doc(id).update({ notified: true });
+}
+
+// ─── Broadcast ───────────────────────────────────────────────────────────────
+
+/**
+ * Get unique phone numbers of customers who had appointments in the last N days.
+ */
+async function getBroadcastRecipients(daysSince = 30) {
+  const since = new Date(Date.now() - daysSince * 24 * 60 * 60 * 1000).toISOString();
+  const snap = await getDb().collection('appointments')
+    .where('createdAt', '>=', since)
+    .get();
+
+  const phones = new Set();
+  snap.docs.forEach(d => {
+    const phone = d.data().phone;
+    if (phone) phones.add(phone);
+  });
+  return Array.from(phones);
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+async function getStatsData(startISO, endISO) {
+  const snap = await getDb().collection('appointments')
+    .where('startISO', '>=', startISO)
+    .where('startISO', '<', endISO)
+    .get();
+
+  const appointments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const total      = appointments.length;
+  const completed  = appointments.filter(a => a.status === 'completed').length;
+  const confirmed  = appointments.filter(a => a.status === 'confirmed').length;
+  const cancelled  = appointments.filter(a => a.status === 'cancelled').length;
+  const noShow     = appointments.filter(a => a.status === 'no_show').length;
+
+  // Revenue
+  const totalRevenue    = appointments
+    .filter(a => a.status === 'completed')
+    .reduce((sum, a) => sum + (a.servicePrice || 0), 0);
+  const expectedRevenue = appointments
+    .filter(a => ['confirmed', 'completed'].includes(a.status))
+    .reduce((sum, a) => sum + (a.servicePrice || 0), 0);
+
+  // Popular services
+  const serviceCount = {};
+  appointments.filter(a => a.status !== 'cancelled').forEach(a => {
+    const name = a.serviceName || 'לא ידוע';
+    serviceCount[name] = (serviceCount[name] || 0) + 1;
+  });
+  const popularServices = Object.entries(serviceCount)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count }));
+
+  // Peak hours
+  const hourCount = {};
+  appointments.filter(a => a.status !== 'cancelled').forEach(a => {
+    if (a.timeDisplay) {
+      const hour = a.timeDisplay.split(':')[0] + ':00';
+      hourCount[hour] = (hourCount[hour] || 0) + 1;
+    }
+  });
+  const peakHours = Object.entries(hourCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour, count]) => ({ hour, count }));
+
+  // Daily revenue (for chart)
+  const dailyMap = {};
+  appointments.filter(a => a.status === 'completed').forEach(a => {
+    const date = a.startISO ? a.startISO.slice(0, 10) : null;
+    if (date) dailyMap[date] = (dailyMap[date] || 0) + (a.servicePrice || 0);
+  });
+  const dailyRevenue = Object.entries(dailyMap)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, revenue]) => ({ date, revenue }));
+
+  return {
+    total, completed, confirmed, cancelled, noShow,
+    totalRevenue, expectedRevenue,
+    popularServices, peakHours, dailyRevenue
+  };
+}
+
 module.exports = {
   init,
   getSession,
@@ -253,8 +466,10 @@ module.exports = {
   saveAppointment,
   getAppointmentById,
   getAppointmentByPhone,
+  getAllAppointmentsByPhone,
   cancelAppointment,
   getAppointmentsInRange,
+  getAppointmentsInRangeAll,
   updateAppointmentStatus,
   clearAllData,
   getServices,
@@ -268,5 +483,16 @@ module.exports = {
   deleteScheduleOverride,
   getUpcomingOverrides,
   getAdminConfig,
-  updateDefaultHours
+  updateDefaultHours,
+  getCustomerProfile,
+  upsertCustomerProfile,
+  blockCustomer,
+  unblockCustomer,
+  isCustomerBlocked,
+  addToWaitingList,
+  getWaitingListForDate,
+  removeFromWaitingList,
+  markWaitingListNotified,
+  getBroadcastRecipients,
+  getStatsData
 };

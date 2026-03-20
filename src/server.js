@@ -140,7 +140,7 @@ function createServer() {
       const start = DateTime.fromISO(date, { zone: TZ }).startOf('day').toISO();
       const end   = DateTime.fromISO(date, { zone: TZ }).endOf('day').toISO();
 
-      const appointments = await firebaseService.getAppointmentsInRange(start, end);
+      const appointments = await firebaseService.getAppointmentsInRangeAll(start, end);
       appointments.sort((a, b) => a.startISO.localeCompare(b.startISO));
       res.json(appointments);
     } catch (err) {
@@ -169,6 +169,78 @@ function createServer() {
       res.json({ success: true });
     } catch (err) {
       logger.error('PATCH /api/admin/appointments status error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // GET /api/admin/appointments?from=YYYY-MM-DD&to=YYYY-MM-DD — week range (all statuses)
+  app.get('/api/admin/appointments/range', adminAuth, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      if (!from || !to) return res.status(400).json({ error: 'from and to required' });
+
+      const start = DateTime.fromISO(from, { zone: TZ }).startOf('day').toISO();
+      const end   = DateTime.fromISO(to,   { zone: TZ }).endOf('day').toISO();
+
+      const appointments = await firebaseService.getAppointmentsInRangeAll(start, end);
+      appointments.sort((a, b) => a.startISO.localeCompare(b.startISO));
+      res.json(appointments);
+    } catch (err) {
+      logger.error('GET /api/admin/appointments/range error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // GET /api/customer/appointments — upcoming + history for authenticated customer
+  app.get('/api/customer/appointments', customerAuth, async (req, res) => {
+    try {
+      const phone = req.customerPhone;
+      const all   = await firebaseService.getAllAppointmentsByPhone(phone);
+      const now   = DateTime.now().setZone(TZ).toISO();
+
+      const upcoming = all
+        .filter(a => a.status === 'confirmed' && a.startISO >= now)
+        .sort((a, b) => a.startISO.localeCompare(b.startISO));
+
+      const history = all
+        .filter(a => a.status !== 'confirmed' || a.startISO < now)
+        .sort((a, b) => b.startISO.localeCompare(a.startISO));
+
+      const name = all.find(a => a.customerName)?.customerName || null;
+      res.json({ upcoming, history, name });
+    } catch (err) {
+      logger.error('GET /api/customer/appointments error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // DELETE /api/customer/appointments/:id — cancel by customer (max 3h before)
+  app.delete('/api/customer/appointments/:id', customerAuth, async (req, res) => {
+    try {
+      const phone = req.customerPhone;
+      const apt   = await firebaseService.getAppointmentById(req.params.id);
+
+      if (!apt) return res.status(404).json({ error: 'תור לא נמצא' });
+      if (apt.phone !== phone) return res.status(403).json({ error: 'אין הרשאה' });
+      if (apt.status !== 'confirmed') return res.status(400).json({ error: 'התור כבר בוטל או הסתיים' });
+
+      const hoursUntil = DateTime.fromISO(apt.startISO, { zone: TZ }).diffNow('hours').hours;
+      if (hoursUntil < 3) {
+        return res.status(400).json({ error: 'TOO_LATE', hoursUntil: Math.round(hoursUntil) });
+      }
+
+      // Cancel in calendar + Firestore
+      if (apt.calendarEventId) {
+        try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {}
+      }
+      await firebaseService.updateAppointmentStatus(req.params.id, 'cancelled', { cancelledBy: 'customer' });
+
+      // Notify barber
+      try { await whatsappService.notifyBarberCancellation(apt); } catch (_) {}
+
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('DELETE /api/customer/appointments error', { error: err.message });
       res.status(500).json({ error: 'Server error' });
     }
   });
