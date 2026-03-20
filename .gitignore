@@ -6,3 +6,4 @@ firebase-service-account.json
 google-service-account.json
 client/node_modules/
 client/dist/
+.claude/

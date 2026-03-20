@@ -237,4 +237,16 @@ git push
 Render יריץ `npm start` שמאתחל את השרת + מגיש את client/dist
 
 ## תאריך עדכון אחרון
-20/03/2026 — React PWA נבנה במלואו (admin + customer). מוכן ל-build ו-deploy.
+20/03/2026 — ניקיון, תיקוני באגים ואבטחה הושלמו. Deployed ל-Render.
+
+### ✅ מה הושלם היום (20/03/2026)
+- [x] הסרת Green-API, Twilio, ו-src/bot/ לחלוטין
+- [x] תיקון Firebase + Google private key (הסרת `.trim()`)
+- [x] תיקון timezone bug בביטול תורים
+- [x] תיקון duplicate endpoint ב-customer/appointments
+- [x] הסרת `/api/customer/phone-login` (חור אבטחה)
+- [x] הוספת CORS middleware
+- [x] JWT_SECRET validation (מינימום 32 תווים)
+- [x] Input validation על מחיר/משך שירות
+- [x] שדרוג firebase-admin לv12
+- [x] npm audit fix (נשארו 8 low בdependencies פנימיות של Google — אין פעולה נדרשת)
