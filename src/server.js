@@ -394,6 +394,53 @@ function createServer() {
     }
   });
 
+  // GET /api/available-dates — open dates in booking window (used by React PWA)
+  app.get('/api/available-dates', async (req, res) => {
+    try {
+      let day = nowInIsrael().plus({ days: 1 }).startOf('day');
+      const limit = config.bookingWindowDays || 14;
+      const dates = [];
+
+      for (let i = 0; i < limit; i++) {
+        const hours = await getEffectiveWorkingHours(day, firebaseService);
+        if (hours) dates.push(day.toFormat('yyyy-MM-dd'));
+        day = day.plus({ days: 1 });
+      }
+
+      res.json({ dates });
+    } catch (err) {
+      logger.error('GET /api/available-dates error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // GET /api/available-slots?date=YYYY-MM-DD — slots for a date (used by React PWA)
+  app.get('/api/available-slots', async (req, res) => {
+    try {
+      const { date } = req.query;
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'date param required (YYYY-MM-DD)' });
+      }
+
+      const dt = DateTime.fromISO(date, { zone: TZ }).startOf('day');
+      if (!dt.isValid) return res.status(400).json({ error: 'Invalid date' });
+
+      const hours = await getEffectiveWorkingHours(dt, firebaseService);
+      if (!hours) return res.json({ slots: [], closed: true });
+
+      const allSlots = generateSlots(dt, hours);
+      const busyTimes = await calendarService.getBusySlotsForDate(dt);
+      const slots = allSlots
+        .filter(s => !busyTimes.includes(s.toFormat('HH:mm')))
+        .map(s => s.toFormat('HH:mm'));
+
+      res.json({ slots, closed: false });
+    } catch (err) {
+      logger.error('GET /api/available-slots error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
   // GET /api/slots?date=YYYY-MM-DD — available slots for a date
   app.get('/api/slots', async (req, res) => {
     try {
