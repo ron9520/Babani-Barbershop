@@ -877,12 +877,10 @@ function createServer() {
     const indexPath = path.join(clientDist, 'index.html');
     try {
       const html = fs.readFileSync(indexPath, 'utf8')
-        .replace('href="/manifest.json"',
-                 'href="/admin-manifest.json?v=2"')
-        .replace(/content="מספרת בבאני"/g,
-                 'content="בבאני ניהול"')
-        .replace('content="#1a1a2e"',
-                 'content="#c9a84c"');
+        .replace('href="/manifest.json"',          'href="/admin-manifest.json?v=3"')
+        .replace('href="/icons/icon-192.png"',     'href="/icons/admin-icon-192.png"')
+        .replace(/content="מספרת בבאני"/g,         'content="בבאני ניהול"')
+        .replace('content="#1a1a2e"',              'content="#0f3460"');
       res.setHeader('Cache-Control', 'no-store');
       res.type('html').send(html);
     } catch { next(); }
