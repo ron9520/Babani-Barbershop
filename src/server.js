@@ -19,15 +19,15 @@ function createServer() {
   app.use(bodyParser.urlencoded({ extended: false }));
   app.use(bodyParser.json());
 
-  // Serve booking page
+  // Legacy URL redirects — must be before static middleware
+  app.get('/booking.html', (req, res) => res.redirect(301, '/'));
+  app.get('/admin.html',   (req, res) => res.redirect(301, '/admin/day'));
+
+  // Static files (icons, firebase-messaging-sw.js, etc.)
   app.use(express.static(path.join(__dirname, '../public')));
 
   // Health check
   app.get('/health', (req, res) => res.json({ status: 'ok', shop: 'מספרת בבאני' }));
-
-  // Legacy URL redirects
-  app.get('/booking.html', (req, res) => res.redirect(301, '/'));
-  app.get('/admin.html',   (req, res) => res.redirect(301, '/admin/day'));
 
   // Green-API webhook
   app.post('/webhook', webhookHandler);
