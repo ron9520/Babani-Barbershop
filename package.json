@@ -15,9 +15,10 @@
     "express": "^4.18.2",
     "firebase-admin": "^11.11.0",
     "googleapis": "^128.0.0",
+    "jsonwebtoken": "^9.0.3",
     "luxon": "^3.4.4",
     "node-cron": "^3.0.3",
-"winston": "^3.11.0"
+    "winston": "^3.11.0"
   },
   "devDependencies": {
     "ngrok": "^5.0.0-beta.2",

@@ -1,6 +1,8 @@
 const logger = require('./logger');
 
 const REQUIRED = [
+  'JWT_SECRET',
+  'ADMIN_PIN',
   'BARBER_PHONE',
   'FIREBASE_PROJECT_ID',
   'FIREBASE_CLIENT_EMAIL',

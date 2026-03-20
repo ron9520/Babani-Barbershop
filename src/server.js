@@ -6,6 +6,7 @@ const { webhookHandler } = require('./bot/messageHandler');
 const calendarService = require('./services/calendarService');
 const firebaseService = require('./services/firebaseService');
 const whatsappService = require('./services/whatsappService');
+const authService = require('./services/authService');
 const { generateSlots, getAvailableDates, getWorkingHours, fromISO, formatDate, formatTime, TZ } = require('./utils/timeUtils');
 const logger = require('./utils/logger');
 const config = require('../config/config.json');
@@ -28,20 +29,106 @@ function createServer() {
   // ─── Admin API ──────────────────────────────────────────────────────────────
 
   function adminAuth(req, res, next) {
-    const pin = req.headers['x-admin-pin'];
-    if (!process.env.ADMIN_PIN || pin !== process.env.ADMIN_PIN) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    // Support both JWT (Bearer) and legacy PIN header
+    const auth = req.headers['authorization'];
+    const pin  = req.headers['x-admin-pin'];
+
+    if (auth && auth.startsWith('Bearer ')) {
+      try {
+        const payload = authService.verifyToken(auth.slice(7));
+        if (payload.role !== 'admin') return res.status(401).json({ error: 'Unauthorized' });
+        return next();
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
     }
-    next();
+
+    // Legacy PIN fallback (for admin.html v1)
+    if (pin && authService.verifyAdminPin(pin)) return next();
+
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // POST /api/admin/login
+  function customerAuth(req, res, next) {
+    const auth = req.headers['authorization'];
+    if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const payload = authService.verifyToken(auth.slice(7));
+      if (payload.role !== 'customer') return res.status(401).json({ error: 'Unauthorized' });
+      req.customerPhone = payload.phone;
+      next();
+    } catch {
+      res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+
+  // POST /api/admin/login — returns JWT
   app.post('/api/admin/login', (req, res) => {
     const { pin } = req.body;
-    if (!process.env.ADMIN_PIN || pin !== process.env.ADMIN_PIN) {
+    if (!authService.verifyAdminPin(pin)) {
       return res.status(401).json({ error: 'קוד שגוי' });
     }
-    res.json({ success: true });
+    const token = authService.signAdminToken();
+    res.json({ success: true, token });
+  });
+
+  // POST /api/customer/send-otp
+  app.post('/api/customer/send-otp', async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ error: 'phone required' });
+
+      const normalizedPhone = whatsappService.normalizePhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ error: 'Invalid phone' });
+
+      const otp = await authService.createOTP(normalizedPhone);
+
+      try {
+        await whatsappService.sendMessage(normalizedPhone,
+          `✂️ *מספרת בבאני — קוד אימות*\n\nקוד הכניסה שלך: *${otp}*\n\nתוקף: 5 דקות\n_אם לא ביקשת קוד, התעלם מהודעה זו_`
+        );
+      } catch (e) {
+        logger.warn('Failed to send OTP via WhatsApp', { phone: normalizedPhone, error: e.message });
+      }
+
+      res.json({ success: true, expiresIn: 300 });
+    } catch (err) {
+      if (err.message.startsWith('LOCKED:')) {
+        const mins = err.message.split(':')[1];
+        return res.status(429).json({ error: `נעול. נסה שוב בעוד ${mins} דקות` });
+      }
+      logger.error('send-otp error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // POST /api/customer/verify-otp
+  app.post('/api/customer/verify-otp', async (req, res) => {
+    try {
+      const { phone, otp } = req.body;
+      if (!phone || !otp) return res.status(400).json({ error: 'phone and otp required' });
+
+      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const ok = await authService.verifyOTP(normalizedPhone, otp);
+
+      if (!ok) return res.status(401).json({ error: 'קוד שגוי' });
+
+      // Get customer name from last appointment
+      const apt = await firebaseService.getAppointmentByPhone(normalizedPhone);
+      const name = apt?.customerName || null;
+
+      const token = authService.signCustomerToken(normalizedPhone);
+      res.json({ success: true, token, name });
+    } catch (err) {
+      if (err.message.startsWith('LOCKED:')) {
+        const mins = err.message.split(':')[1];
+        return res.status(429).json({ error: `נעול. נסה שוב בעוד ${mins} דקות` });
+      }
+      if (err.message === 'EXPIRED') return res.status(401).json({ error: 'הקוד פג תוקף, שלח שוב' });
+      if (err.message === 'NOT_FOUND') return res.status(401).json({ error: 'לא נמצא קוד. שלח קוד חדש' });
+      logger.error('verify-otp error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
   });
 
   // GET /api/admin/appointments?date=YYYY-MM-DD
