@@ -379,7 +379,9 @@
       <h2>התור נקבע בהצלחה!</h2>
       <p id="successMsgFinal"></p>
       <br/>
-      <p style="color: var(--muted); font-size:0.9rem;">תקבל אישור בוואטסאפ בקרוב.<br/>יום לפני התור תגיע תזכורת.</p>
+      <p style="color: var(--muted); font-size:0.9rem;">יום לפני התור תגיע תזכורת.</p>
+      <br/>
+      <button class="btn btn-primary" onclick="resetBooking()" style="margin-top:8px;">קבע תור נוסף</button>
     </div>
   </div>
 
@@ -719,6 +721,23 @@
       btn.disabled = false;
       btn.innerHTML = 'קבע תור';
     }
+  }
+
+  // ─── Reset ────────────────────────────────────────────────────────────────
+  function resetBooking() {
+    state.step = 1;
+    state.service = null;
+    state.date = null;
+    state.time = null;
+    state.name = '';
+    state.phone = '';
+
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById('step1').classList.add('active');
+    document.querySelectorAll('.progress-step').forEach((s, i) => s.classList.toggle('active', i === 0));
+    document.getElementById('btnStep1').disabled = true;
+    document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // ─── Admin ────────────────────────────────────────────────────────────────
