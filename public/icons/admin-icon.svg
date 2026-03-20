@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="110" fill="#0f3460"/>
+  <rect x="10" y="10" width="492" height="492" rx="100" fill="none" stroke="#c9a84c" stroke-width="16"/>
+  <!-- Gear icon -->
+  <g fill="#c9a84c">
+    <!-- Gear teeth -->
+    <rect x="236" y="60"  width="40" height="70" rx="10"/>
+    <rect x="236" y="382" width="40" height="70" rx="10"/>
+    <rect x="60"  y="236" width="70" height="40" rx="10"/>
+    <rect x="382" y="236" width="70" height="40" rx="10"/>
+    <!-- Diagonal teeth -->
+    <rect x="128" y="100" width="40" height="70" rx="10" transform="rotate(-45 148 135)"/>
+    <rect x="344" y="342" width="40" height="70" rx="10" transform="rotate(-45 364 377)"/>
+    <rect x="100" y="344" width="70" height="40" rx="10" transform="rotate(-45 135 364)"/>
+    <rect x="342" y="128" width="70" height="40" rx="10" transform="rotate(-45 377 148)"/>
+    <!-- Center circle -->
+    <circle cx="256" cy="256" r="80" fill="#0f3460"/>
+    <circle cx="256" cy="256" r="80" fill="none" stroke="#c9a84c" stroke-width="40"/>
+    <!-- Inner dot -->
+    <circle cx="256" cy="256" r="25" fill="#c9a84c"/>
+  </g>
+  <text x="256" y="470" font-size="46" font-family="Arial, sans-serif" font-weight="bold" fill="#c9a84c" text-anchor="middle">ניהול</text>
+</svg>

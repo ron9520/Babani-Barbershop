@@ -3,8 +3,9 @@
   "short_name": "ניהול ✂️",
   "description": "פאנל ניהול — מספרת בבאני",
   "start_url": "/admin/day",
+  "scope": "/admin/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
+  "background_color": "#0f3460",
   "theme_color": "#c9a84c",
   "orientation": "portrait",
   "lang": "he",
@@ -21,6 +22,12 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/admin-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ],
   "categories": ["business", "utilities"]

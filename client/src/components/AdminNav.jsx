@@ -10,7 +10,8 @@ const tabs = [
 
 export default function AdminNav() {
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-card border-t border-surface flex safe-bottom z-50">
+    <nav className="fixed bottom-0 inset-x-0 bg-card border-t border-surface flex z-50"
+         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {tabs.map(tab => (
         <NavLink
           key={tab.to}

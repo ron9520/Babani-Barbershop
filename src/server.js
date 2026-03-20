@@ -877,9 +877,13 @@ function createServer() {
     const indexPath = path.join(clientDist, 'index.html');
     try {
       const html = fs.readFileSync(indexPath, 'utf8')
-        .replace('href="/manifest.json"', 'href="/admin-manifest.json"')
-        .replace('<meta name="apple-mobile-web-app-title" content="מספרת בבאני" />',
-                 '<meta name="apple-mobile-web-app-title" content="בבאני ניהול" />');
+        .replace('href="/manifest.json"',
+                 'href="/admin-manifest.json?v=2"')
+        .replace(/content="מספרת בבאני"/g,
+                 'content="בבאני ניהול"')
+        .replace('content="#1a1a2e"',
+                 'content="#c9a84c"');
+      res.setHeader('Cache-Control', 'no-store');
       res.type('html').send(html);
     } catch { next(); }
   });
