@@ -64,6 +64,15 @@ export default function MyAppointments() {
 
         {loading ? (
           <p className="text-center text-muted py-10">טוען...</p>
+        ) : apts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <p className="text-5xl mb-4">✂️</p>
+            <p className="font-semibold text-lg mb-1">לא נמצאו תורים</p>
+            <p className="text-muted text-sm mb-6">עדיין לא קבעת תור במספרת בבאני</p>
+            <button onClick={() => navigate('/')} className="btn-primary px-8">
+              קבע תור עכשיו
+            </button>
+          </div>
         ) : (
           <>
             {/* Upcoming */}

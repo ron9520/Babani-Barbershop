@@ -84,6 +84,18 @@ export default function Settings() {
     navigate('/admin/login');
   };
 
+  const handleReset = async () => {
+    if (!confirm('⚠️ איפוס כללי — ימחק את כל התורים ואת כל האירועים בלוח השנה. לא ניתן לשחזר. להמשיך?')) return;
+    if (!confirm('בטוח לגמרי? פעולה זו בלתי הפיכה!')) return;
+    try {
+      await api.post('/admin/reset', {});
+      setSaved('✅ המערכת אופסה בהצלחה');
+      setTimeout(() => setSaved(''), 4000);
+    } catch (e) {
+      alert('שגיאה: ' + e.message);
+    }
+  };
+
   return (
     <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
       <h1 className="text-xl font-bold mb-5">⚙️ הגדרות</h1>
@@ -165,6 +177,15 @@ export default function Settings() {
             {broadcasting ? 'שולח...' : '📤 שלח הודעה'}
           </button>
         </form>
+      </section>
+
+      {/* Reset */}
+      <section className="card mb-4 border border-danger/30">
+        <h2 className="font-semibold text-danger mb-1">🗑️ איפוס כללי</h2>
+        <p className="text-muted text-xs mb-3">מוחק את כל התורים מהמערכת ואת כל האירועים מלוח השנה. פעולה בלתי הפיכה.</p>
+        <button onClick={handleReset} className="w-full py-2 rounded-xl border border-danger text-danger text-sm font-semibold active:bg-danger active:text-white transition-colors">
+          ⚠️ אפס הכל
+        </button>
       </section>
 
       {/* Logout */}

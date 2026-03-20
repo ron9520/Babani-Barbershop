@@ -18,7 +18,8 @@
       "Bash(curl:*)",
       "Bash(echo:*)",
       "WebFetch(domain:babani-barbershop.onrender.com)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node:*)"
     ]
   }
 }

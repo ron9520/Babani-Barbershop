@@ -264,10 +264,10 @@ function NameStep({ booking, setBooking, onNext }) {
           <input className="input" placeholder="השם שלך" required value={name} onChange={e => setName(e.target.value)} />
         </div>
         <div>
-          <label className="text-sm text-muted mb-1 block">WhatsApp *</label>
-          <input className="input" placeholder="972501234567" type="tel" dir="ltr" required value={phone}
-            onChange={e => setPhone(e.target.value.replace(/[^\d+]/g, ''))} />
-          <p className="text-xs text-muted mt-1">תקבל אישור ב-WhatsApp</p>
+          <label className="text-sm text-muted mb-1 block">טלפון *</label>
+          <input className="input" placeholder="0501234567" type="tel" dir="ltr" required value={phone}
+            onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))} />
+          <p className="text-xs text-muted mt-1">כדי לשמור ולבטל תורים</p>
         </div>
         <button type="submit" className="btn-primary mt-2">המשך</button>
       </form>

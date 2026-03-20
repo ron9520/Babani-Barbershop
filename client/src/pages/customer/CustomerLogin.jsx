@@ -48,11 +48,11 @@ export default function CustomerLogin() {
             <label className="text-sm text-muted mb-1 block">מספר טלפון</label>
             <input
               className="input text-center text-lg tracking-wider" dir="ltr"
-              type="tel" placeholder="972501234567" required
-              value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+]/g, ''))}
+              type="tel" placeholder="0501234567" required
+              value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))}
               autoFocus
             />
-            <p className="text-xs text-muted mt-1 text-center">כולל קידומת מדינה (972 לישראל)</p>
+            <p className="text-xs text-muted mt-1 text-center">המספר שהזנת בעת קביעת התור</p>
           </div>
           {error && <p className="text-danger text-sm text-center">{error}</p>}
           <button type="submit" className="btn-primary" disabled={loading || phone.length < 10}>
