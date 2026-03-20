@@ -19,6 +19,10 @@ function validateEnv() {
     console.error('\n❌ חסרים env vars ב-.env:\n  ' + missing.join('\n  ') + '\n');
     process.exit(1);
   }
+  if (process.env.JWT_SECRET.length < 32) {
+    console.error('\n❌ JWT_SECRET חייב להיות לפחות 32 תווים!\n');
+    process.exit(1);
+  }
   logger.info('Environment variables validated OK');
 }
 

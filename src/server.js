@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { DateTime } = require('luxon');
@@ -23,6 +24,7 @@ function normalizePhone(raw) {
 function createServer() {
   const app = express();
 
+  app.use(cors({ origin: process.env.CLIENT_URL || true, credentials: true }));
   app.use(bodyParser.urlencoded({ extended: false }));
   app.use(bodyParser.json());
 
@@ -108,22 +110,6 @@ function createServer() {
     }
   });
 
-  // POST /api/customer/phone-login — login by phone only (no OTP)
-  app.post('/api/customer/phone-login', async (req, res) => {
-    try {
-      const { phone } = req.body;
-      if (!phone) return res.status(400).json({ error: 'phone required' });
-      const normalizedPhone = normalizePhone(phone);
-      const blocked = await firebaseService.isCustomerBlocked(normalizedPhone);
-      if (blocked) return res.status(403).json({ error: 'מספר זה חסום' });
-      const token = authService.signCustomerToken(normalizedPhone);
-      res.json({ token, phone: normalizedPhone });
-    } catch (err) {
-      logger.error('POST /api/customer/phone-login error', { error: err.message });
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
-
   // POST /api/customer/send-otp
   app.post('/api/customer/send-otp', async (req, res) => {
     try {
@@ -141,7 +127,7 @@ function createServer() {
       res.json({ success: true, expiresIn: 300 });
     } catch (err) {
       if (err.message.startsWith('LOCKED:')) {
-        const mins = err.message.split(':')[1];
+        const mins = (err.message.split(':')[1] || '10').trim();
         return res.status(429).json({ error: `נעול. נסה שוב בעוד ${mins} דקות` });
       }
       logger.error('send-otp error', { error: err.message });
@@ -168,7 +154,7 @@ function createServer() {
       res.json({ success: true, token, name });
     } catch (err) {
       if (err.message.startsWith('LOCKED:')) {
-        const mins = err.message.split(':')[1];
+        const mins = (err.message.split(':')[1] || '10').trim();
         return res.status(429).json({ error: `נעול. נסה שוב בעוד ${mins} דקות` });
       }
       if (err.message === 'EXPIRED') return res.status(401).json({ error: 'הקוד פג תוקף, שלח שוב' });
@@ -382,6 +368,9 @@ function createServer() {
       if (!name || !price || !durationMinutes) {
         return res.status(400).json({ error: 'name, price, durationMinutes required' });
       }
+      if (Number(price) <= 0 || Number(durationMinutes) <= 0) {
+        return res.status(400).json({ error: 'price ו-durationMinutes חייבים להיות חיוביים' });
+      }
       const id = await firebaseService.createService({ name, price, durationMinutes, order: order || 99 });
       res.json({ success: true, id });
     } catch (err) {
@@ -579,7 +568,7 @@ function createServer() {
       if (apt.phone !== req.customerPhone) return res.status(403).json({ error: 'Forbidden' });
       if (apt.status !== 'confirmed') return res.status(400).json({ error: 'תור כבר בוטל או הסתיים' });
 
-      const hoursUntil = DateTime.fromISO(apt.startISO).diff(nowInIsrael(), 'hours').hours;
+      const hoursUntil = DateTime.fromISO(apt.startISO, { zone: TZ }).diff(nowInIsrael(), 'hours').hours;
       if (hoursUntil < 3) {
         return res.status(400).json({ error: 'late_cancel', message: 'לא ניתן לבטל פחות מ-3 שעות לפני התור. צור קשר ישיר.' });
       }
