@@ -7,7 +7,7 @@ const calendarService = require('./services/calendarService');
 const firebaseService = require('./services/firebaseService');
 const whatsappService = require('./services/whatsappService');
 const authService = require('./services/authService');
-const { generateSlots, getAvailableDates, getWorkingHours, fromISO, formatDate, formatTime, TZ } = require('./utils/timeUtils');
+const { generateSlots, getAvailableDates, getEffectiveWorkingHours, getWorkingHours, fromISO, formatDate, formatTime, TZ } = require('./utils/timeUtils');
 const logger = require('./utils/logger');
 const config = require('../config/config.json');
 
@@ -173,6 +173,63 @@ function createServer() {
     }
   });
 
+  // ─── Schedule API ───────────────────────────────────────────────────────────
+
+  // GET /api/admin/schedule — default hours + upcoming overrides
+  app.get('/api/admin/schedule', adminAuth, async (req, res) => {
+    try {
+      const [adminConfig, overrides] = await Promise.all([
+        firebaseService.getAdminConfig(),
+        firebaseService.getUpcomingOverrides()
+      ]);
+      const defaultHours = adminConfig?.workingHours || config.workingHours;
+      res.json({ defaultHours, overrides });
+    } catch (err) {
+      logger.error('GET /api/admin/schedule error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // PUT /api/admin/schedule/default — update permanent hours for a day
+  app.put('/api/admin/schedule/default', adminAuth, async (req, res) => {
+    try {
+      const { day, open, close } = req.body;
+      const validDays = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+      if (!validDays.includes(day)) return res.status(400).json({ error: 'Invalid day' });
+      await firebaseService.updateDefaultHours(day, open, close);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('PUT /api/admin/schedule/default error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // POST /api/admin/schedule/override — one-time override for a specific date
+  app.post('/api/admin/schedule/override', adminAuth, async (req, res) => {
+    try {
+      const { date, open, close, closed, reason } = req.body;
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'date required (YYYY-MM-DD)' });
+      }
+      await firebaseService.setScheduleOverride({ date, open, close, closed, reason });
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('POST /api/admin/schedule/override error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // DELETE /api/admin/schedule/override/:date
+  app.delete('/api/admin/schedule/override/:date', adminAuth, async (req, res) => {
+    try {
+      await firebaseService.deleteScheduleOverride(req.params.date);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('DELETE /api/admin/schedule/override error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
   // ─── Booking API ────────────────────────────────────────────────────────────
 
   // GET /api/services — list all services
@@ -191,10 +248,10 @@ function createServer() {
       const dt = DateTime.fromISO(date, { zone: TZ }).startOf('day');
       if (!dt.isValid) return res.status(400).json({ error: 'Invalid date' });
 
-      const hours = getWorkingHours(dt);
+      const hours = await getEffectiveWorkingHours(dt, firebaseService);
       if (!hours) return res.json({ slots: [], closed: true });
 
-      const allSlots = generateSlots(dt);
+      const allSlots = generateSlots(dt, hours);
       const busyTimes = await calendarService.getBusySlotsForDate(dt);
       const slots = allSlots
         .filter(s => !busyTimes.includes(s.toFormat('HH:mm')))

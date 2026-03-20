@@ -124,6 +124,56 @@ async function clearAllData() {
   return appointmentsSnap.size;
 }
 
+// ─── Schedule Overrides ───────────────────────────────────────────────────────
+
+async function getScheduleOverride(dateISO) {
+  const doc = await getDb().collection('schedule_overrides').doc(dateISO).get();
+  return doc.exists ? doc.data() : null;
+}
+
+async function setScheduleOverride({ date, open, close, closed, reason }) {
+  await getDb().collection('schedule_overrides').doc(date).set({
+    date,
+    open:   closed ? null : open,
+    close:  closed ? null : close,
+    closed: closed || false,
+    reason: reason || '',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  logger.info('Schedule override set', { date, closed });
+}
+
+async function deleteScheduleOverride(dateISO) {
+  await getDb().collection('schedule_overrides').doc(dateISO).delete();
+  logger.info('Schedule override deleted', { date: dateISO });
+}
+
+async function getUpcomingOverrides() {
+  const today  = new Date().toISOString().slice(0, 10);
+  const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const snap = await getDb().collection('schedule_overrides')
+    .where('date', '>=', today)
+    .where('date', '<=', future)
+    .orderBy('date')
+    .get();
+  return snap.docs.map(d => d.data());
+}
+
+// ─── Admin Config (default working hours) ─────────────────────────────────────
+
+async function getAdminConfig() {
+  const doc = await getDb().collection('admin_config').doc('settings').get();
+  return doc.exists ? doc.data() : null;
+}
+
+async function updateDefaultHours(day, open, close) {
+  await getDb().collection('admin_config').doc('settings').set(
+    { workingHours: { [day]: { open, close } } },
+    { merge: true }
+  );
+  logger.info('Default hours updated', { day, open, close });
+}
+
 module.exports = {
   init,
   getSession,
@@ -135,5 +185,11 @@ module.exports = {
   cancelAppointment,
   getAppointmentsInRange,
   updateAppointmentStatus,
-  clearAllData
+  clearAllData,
+  getScheduleOverride,
+  setScheduleOverride,
+  deleteScheduleOverride,
+  getUpcomingOverrides,
+  getAdminConfig,
+  updateDefaultHours
 };

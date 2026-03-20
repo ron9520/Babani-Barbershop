@@ -37,11 +37,33 @@ function getWorkingHours(dt) {
 }
 
 /**
+ * Returns effective working hours for a date, checking Firestore overrides first.
+ * Falls back to config.workingHours if no override exists.
+ * Returns null if the day is closed.
+ * @param {DateTime} dt
+ * @param {object} firebaseService - injected to avoid circular deps
+ */
+async function getEffectiveWorkingHours(dt, firebaseService) {
+  const dateISO = dt.toFormat('yyyy-MM-dd');
+  try {
+    const override = await firebaseService.getScheduleOverride(dateISO);
+    if (override) {
+      if (override.closed) return null;
+      return { open: override.open, close: override.close };
+    }
+  } catch (_) {
+    // fallback to config on Firestore error
+  }
+  return getWorkingHours(dt);
+}
+
+/**
  * Returns all available 30-min slots for a given date (Israel timezone DateTime).
+ * Accepts optional hours override; if not provided, reads from config.
  * Does not check calendar — just generates time slots within working hours.
  */
-function generateSlots(dt) {
-  const hours = getWorkingHours(dt);
+function generateSlots(dt, hours) {
+  if (hours === undefined) hours = getWorkingHours(dt);
   if (!hours) return [];
 
   const [openH, openM] = hours.open.split(':').map(Number);
@@ -116,6 +138,7 @@ module.exports = {
   formatDateTime,
   generateSlots,
   getAvailableDates,
+  getEffectiveWorkingHours,
   parseDateInput,
   parseTimeInput,
   getWorkingHours,
