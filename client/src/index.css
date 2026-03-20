@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body, #root {
+    height: 100%;
+    background-color: #1a1a2e;
+    color: #eaeaea;
+    font-family: 'Heebo', sans-serif;
+    direction: rtl;
+    overscroll-behavior: none;
+  }
+
+  /* iOS safe areas */
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white font-semibold py-3 px-6 rounded-xl active:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply border border-muted text-muted font-medium py-3 px-6 rounded-xl active:opacity-70 transition-opacity;
+  }
+
+  .card {
+    @apply bg-card rounded-2xl p-4;
+  }
+
+  .input {
+    @apply w-full bg-surface border border-surface text-text rounded-xl px-4 py-3 focus:outline-none focus:border-primary transition-colors placeholder:text-muted;
+  }
+
+  .badge-confirmed  { @apply bg-blue-500/20 text-blue-300 text-xs px-2 py-0.5 rounded-full; }
+  .badge-completed  { @apply bg-success/20 text-success text-xs px-2 py-0.5 rounded-full; }
+  .badge-cancelled  { @apply bg-danger/20 text-danger text-xs px-2 py-0.5 rounded-full; }
+  .badge-no_show    { @apply bg-warning/20 text-warning text-xs px-2 py-0.5 rounded-full; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #8892a4; border-radius: 4px; }
+
+/* Fade animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn { animation: fadeIn 0.25s ease-out both; }

@@ -800,8 +800,15 @@ function createServer() {
     }
   });
 
-  // 404
-  app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+  // ── Serve React PWA (production) ──────────────────────────────────────────
+  const clientDist = path.join(__dirname, '../client/dist');
+  app.use(express.static(clientDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/webhook')) return next();
+    res.sendFile(path.join(clientDist, 'index.html'), err => {
+      if (err) next();
+    });
+  });
 
   // Error handler
   app.use((err, req, res, next) => {

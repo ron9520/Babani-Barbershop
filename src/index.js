@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { createServer } = require('./server');
 const { init: initFirebase, migrateServicesIfNeeded } = require('./services/firebaseService');
-const { scheduleReminders, scheduleKeepAlive } = require('./jobs/reminderJob');
+const { scheduleAll } = require('./jobs/reminderJob');
 const config = require('../config/config.json');
 const { validateEnv } = require('./utils/validateEnv');
 const logger = require('./utils/logger');
@@ -26,11 +26,8 @@ async function main() {
     logger.info(`Health: http://localhost:${PORT}/health`);
   });
 
-  // Schedule daily reminders
-  scheduleReminders();
-
-  // Keep-alive ping for Render free tier
-  scheduleKeepAlive(process.env.RENDER_EXTERNAL_URL);
+  // Schedule all cron jobs (reminders, daily summary, weekly report, review requests, rebooking nudges, keep-alive)
+  scheduleAll(process.env.RENDER_EXTERNAL_URL);
 
   logger.info('Bot is ready! ✂️');
 }

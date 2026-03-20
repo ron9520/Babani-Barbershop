@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
+    "build:client": "cd client && npm install && npm run build",
+    "build": "npm run build:client",
     "test:calendar": "node scripts/testCalendar.js",
     "tunnel": "node scripts/startWithNgrok.js"
   },

@@ -3,21 +3,13 @@ services:
     name: babani-barber-shop
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_WHATSAPP_FROM
-        sync: false
-      - key: BARBER_WHATSAPP
-        sync: false
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
@@ -29,4 +21,20 @@ services:
       - key: GOOGLE_CLIENT_EMAIL
         sync: false
       - key: GOOGLE_PRIVATE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_PIN
+        sync: false
+      - key: BARBER_PHONE
+        sync: false
+      - key: FIREBASE_WEB_API_KEY
+        sync: false
+      - key: FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: FIREBASE_WEB_APP_ID
+        sync: false
+      - key: FIREBASE_VAPID_KEY
+        sync: false
+      - key: RENDER_EXTERNAL_URL
         sync: false
