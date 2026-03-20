@@ -25,6 +25,10 @@ function createServer() {
   // Health check
   app.get('/health', (req, res) => res.json({ status: 'ok', shop: 'מספרת בבאני' }));
 
+  // Legacy URL redirects
+  app.get('/booking.html', (req, res) => res.redirect(301, '/'));
+  app.get('/admin.html',   (req, res) => res.redirect(301, '/admin/day'));
+
   // Green-API webhook
   app.post('/webhook', webhookHandler);
 
