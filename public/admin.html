@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ניהול — מספרת בבאני</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="בבאני ניהול" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #1a1a2e;
+      --surface: #16213e;
+      --card:    #0f3460;
+      --accent:  #e94560;
+      --gold:    #c9a84c;
+      --text:    #ffffff;
+      --muted:   #a0a0b0;
+      --border:  #2a2a4a;
+      --green:   #27ae60;
+      --radius:  14px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    /* ── PIN SCREEN ────────────────────────────── */
+    #pinScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 24px;
+      gap: 32px;
+    }
+    #pinScreen h1 { font-size: 1.5rem; color: var(--gold); }
+    #pinScreen p  { color: var(--muted); font-size: 0.9rem; }
+
+    .pin-dots {
+      display: flex;
+      gap: 16px;
+    }
+    .pin-dot {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--muted);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pin-dot.filled { background: var(--gold); border-color: var(--gold); }
+
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+      max-width: 300px;
+    }
+    .num-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 50%;
+      aspect-ratio: 1;
+      font-size: 1.4rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .num-btn:active { background: var(--card); }
+    .num-btn.del    { font-size: 1.1rem; color: var(--muted); }
+    .num-btn.empty  { background: transparent; border: none; cursor: default; }
+
+    .pin-error {
+      color: var(--accent);
+      font-size: 0.9rem;
+      min-height: 1.2em;
+      text-align: center;
+    }
+
+    /* ── ADMIN APP ─────────────────────────────── */
+    #adminApp { display: none; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+
+    /* Top Bar */
+    .top-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      padding-top: calc(14px + env(safe-area-inset-top));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .top-bar h1 { font-size: 1rem; color: var(--gold); }
+    .top-bar .logout-btn {
+      background: none; border: none; color: var(--muted);
+      font-size: 0.8rem; cursor: pointer; padding: 4px 8px;
+    }
+
+    /* Date Nav */
+    .date-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .date-nav .nav-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    .date-nav .nav-btn:active { opacity: 0.7; }
+    .date-nav .date-label {
+      flex: 1;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .date-nav .today-btn {
+      background: none;
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    /* Summary */
+    .summary-bar {
+      background: var(--card);
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-around;
+      border-bottom: 1px solid var(--border);
+    }
+    .summary-item { text-align: center; }
+    .summary-item .val { font-size: 1.2rem; font-weight: 700; color: var(--gold); }
+    .summary-item .lbl { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    /* Content */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+
+    /* Appointment Card */
+    .apt-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 10px;
+      transition: border-color 0.2s;
+    }
+    .apt-card.completed { border-color: var(--green); opacity: 0.6; }
+    .apt-card.cancelled { border-color: var(--accent); opacity: 0.4; }
+    .apt-card.no_show   { border-color: #555; opacity: 0.4; }
+
+    .apt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .apt-time {
+      background: var(--card);
+      color: var(--gold);
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 4px 10px;
+    }
+    .apt-status-badge {
+      font-size: 0.75rem;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-weight: 600;
+    }
+    .apt-status-badge.confirmed  { background: #1a2a4a; color: #7aa8f0; }
+    .apt-status-badge.completed  { background: #1a3a1a; color: #6fcf6f; }
+    .apt-status-badge.cancelled  { background: #3a1a1a; color: #f07070; }
+    .apt-status-badge.no_show    { background: #2a2a2a; color: #888; }
+
+    .apt-name    { font-size: 1rem; font-weight: 600; margin-bottom: 3px; }
+    .apt-service { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
+
+    .apt-meta {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .apt-meta span {
+      font-size: 0.82rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .apt-meta a { color: var(--muted); text-decoration: none; }
+    .apt-meta a:hover { color: var(--gold); }
+
+    .apt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .action-btn {
+      flex: 1;
+      min-width: 80px;
+      padding: 9px 6px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s;
+      text-align: center;
+    }
+    .action-btn:active { opacity: 0.7; }
+    .btn-complete { background: #1a4a1a; color: #6fcf6f; border: 1px solid #2d6a2d; }
+    .btn-cancel   { background: #4a1a1a; color: #f07070; border: 1px solid #6a2d2d; }
+    .btn-noshow   { background: #2a2a2a; color: #888;    border: 1px solid #444; }
+    .btn-call     { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+    /* Loading */
+    .loading-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<!-- PIN Screen -->
+<div id="pinScreen">
+  <div style="text-align:center">
+    <div style="font-size:2.5rem; margin-bottom:12px;">✂️</div>
+    <h1>מספרת בבאני</h1>
+    <p style="margin-top:6px;">פאנל ניהול</p>
+  </div>
+
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div>
+    <div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div>
+    <div class="pin-dot" id="d3"></div>
+  </div>
+
+  <div class="pin-error" id="pinError"></div>
+
+  <div class="numpad">
+    <button class="num-btn" onclick="pinInput('1')">1</button>
+    <button class="num-btn" onclick="pinInput('2')">2</button>
+    <button class="num-btn" onclick="pinInput('3')">3</button>
+    <button class="num-btn" onclick="pinInput('4')">4</button>
+    <button class="num-btn" onclick="pinInput('5')">5</button>
+    <button class="num-btn" onclick="pinInput('6')">6</button>
+    <button class="num-btn" onclick="pinInput('7')">7</button>
+    <button class="num-btn" onclick="pinInput('8')">8</button>
+    <button class="num-btn" onclick="pinInput('9')">9</button>
+    <button class="num-btn empty"></button>
+    <button class="num-btn" onclick="pinInput('0')">0</button>
+    <button class="num-btn del" onclick="pinDelete()">⌫</button>
+  </div>
+</div>
+
+<!-- Admin App -->
+<div id="adminApp">
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <h1>✂️ מספרת בבאני — ניהול</h1>
+    <button class="logout-btn" onclick="logout()">יציאה</button>
+  </div>
+
+  <!-- Date Navigation -->
+  <div class="date-nav">
+    <button class="nav-btn" onclick="changeDay(-1)">›</button>
+    <span class="date-label" id="dateLabel"></span>
+    <button class="today-btn" onclick="goToday()">היום</button>
+    <button class="nav-btn" onclick="changeDay(1)">‹</button>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-bar">
+    <div class="summary-item">
+      <div class="val" id="summaryCount">—</div>
+      <div class="lbl">תורים</div>
+    </div>
+    <div class="summary-item">
+      <div class="val" id="summaryRevenue">—</div>
+      <div class="lbl">הכנסה צפויה</div>
+    </div>
+    <div class="summary-item">
+      <div class="val" id="summaryDone">—</div>
+      <div class="lbl">הסתיימו</div>
+    </div>
+  </div>
+
+  <!-- Appointments List -->
+  <div class="content" id="aptList">
+    <div class="loading-state">טוען...</div>
+  </div>
+
+</div>
+
+<script>
+  // ─── PIN ──────────────────────────────────────────────────────────────────
+  let pin = '';
+  let adminPin = null; // stored after login
+
+  function pinInput(digit) {
+    if (pin.length >= 4) return;
+    pin += digit;
+    updateDots();
+    if (pin.length === 4) submitPin();
+  }
+
+  function pinDelete() {
+    pin = pin.slice(0, -1);
+    updateDots();
+    document.getElementById('pinError').textContent = '';
+  }
+
+  function updateDots() {
+    for (let i = 0; i < 4; i++) {
+      document.getElementById('d' + i).classList.toggle('filled', i < pin.length);
+    }
+  }
+
+  async function submitPin() {
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin })
+      });
+      if (res.ok) {
+        adminPin = pin;
+        sessionStorage.setItem('adminPin', pin);
+        showApp();
+      } else {
+        document.getElementById('pinError').textContent = 'קוד שגוי, נסה שוב';
+        pin = '';
+        updateDots();
+      }
+    } catch (e) {
+      document.getElementById('pinError').textContent = 'שגיאת תקשורת';
+      pin = '';
+      updateDots();
+    }
+  }
+
+  function logout() {
+    sessionStorage.removeItem('adminPin');
+    adminPin = null;
+    document.getElementById('adminApp').style.display = 'none';
+    document.getElementById('pinScreen').style.display = 'flex';
+    pin = '';
+    updateDots();
+  }
+
+  // ─── App ──────────────────────────────────────────────────────────────────
+  const DAY_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+  let currentDate = new Date();
+  currentDate.setHours(0, 0, 0, 0);
+
+  function showApp() {
+    document.getElementById('pinScreen').style.display = 'none';
+    document.getElementById('adminApp').style.display = 'flex';
+    loadDay();
+  }
+
+  function isoDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function formatDateLabel(d) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate()+1);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+    const day = DAY_HE[d.getDay()];
+    const str = `יום ${day} ${d.getDate()}/${d.getMonth()+1}`;
+    if (d.getTime() === today.getTime()) return `📅 ${str} (היום)`;
+    if (d.getTime() === tomorrow.getTime()) return `${str} (מחר)`;
+    if (d.getTime() === yesterday.getTime()) return `${str} (אתמול)`;
+    return str;
+  }
+
+  function changeDay(delta) {
+    currentDate = new Date(currentDate);
+    currentDate.setDate(currentDate.getDate() + delta);
+    loadDay();
+  }
+
+  function goToday() {
+    currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    loadDay();
+  }
+
+  async function loadDay() {
+    document.getElementById('dateLabel').textContent = formatDateLabel(currentDate);
+    document.getElementById('aptList').innerHTML = '<div class="loading-state">טוען...</div>';
+    document.getElementById('summaryCount').textContent = '—';
+    document.getElementById('summaryRevenue').textContent = '—';
+    document.getElementById('summaryDone').textContent = '—';
+
+    try {
+      const res = await fetch(`/api/admin/appointments?date=${isoDate(currentDate)}`, {
+        headers: { 'x-admin-pin': adminPin }
+      });
+      if (res.status === 401) { logout(); return; }
+      const apts = await res.json();
+      renderAppointments(apts);
+    } catch (e) {
+      document.getElementById('aptList').innerHTML = '<div class="loading-state">שגיאה בטעינה</div>';
+    }
+  }
+
+  function renderAppointments(apts) {
+    const active = apts.filter(a => a.status !== 'cancelled');
+    const done   = apts.filter(a => a.status === 'completed').length;
+    const revenue = active.reduce((s, a) => s + (a.servicePrice || 0), 0);
+
+    document.getElementById('summaryCount').textContent = active.length;
+    document.getElementById('summaryRevenue').textContent = `₪${revenue}`;
+    document.getElementById('summaryDone').textContent = `${done}/${active.length}`;
+
+    if (apts.length === 0) {
+      document.getElementById('aptList').innerHTML = `
+        <div class="empty-state">
+          <div class="icon">✂️</div>
+          <p>אין תורים ביום זה</p>
+        </div>`;
+      return;
+    }
+
+    const html = apts.map(a => aptCardHTML(a)).join('');
+    document.getElementById('aptList').innerHTML = html;
+  }
+
+  const STATUS_LABEL = {
+    confirmed: 'מאושר',
+    completed: 'הסתיים ✅',
+    cancelled: 'בוטל ❌',
+    no_show:   'לא הגיע 👻'
+  };
+
+  function aptCardHTML(a) {
+    const time = a.timeDisplay || '—';
+    const statusClass = a.status || 'confirmed';
+    const statusLabel = STATUS_LABEL[a.status] || a.status;
+    const isDone = ['completed','cancelled','no_show'].includes(a.status);
+
+    const actions = isDone ? '' : `
+      <div class="apt-actions">
+        <button class="action-btn btn-complete" onclick="updateStatus('${a.id}', 'completed')">✅ הסתיים</button>
+        <button class="action-btn btn-noshow"   onclick="updateStatus('${a.id}', 'no_show')">👻 לא הגיע</button>
+        <button class="action-btn btn-cancel"   onclick="confirmCancel('${a.id}', '${a.customerName}')">❌ ביטול</button>
+      </div>`;
+
+    return `
+      <div class="apt-card ${statusClass}" id="card-${a.id}">
+        <div class="apt-header">
+          <span class="apt-time">${time}</span>
+          <span class="apt-status-badge ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="apt-name">👤 ${a.customerName}</div>
+        <div class="apt-service">💈 ${a.serviceName}</div>
+        <div class="apt-meta">
+          <span>💰 ₪${a.servicePrice}</span>
+          <span>⏱ ${a.serviceName.includes('זקן') && a.serviceName.includes('תספורת') ? '60' : '30'} דק'</span>
+          <span>📱 <a href="tel:${a.phone}">${a.phone}</a></span>
+        </div>
+        ${actions}
+      </div>`;
+  }
+
+  async function updateStatus(id, status) {
+    const card = document.getElementById('card-' + id);
+    if (card) card.style.opacity = '0.5';
+
+    try {
+      const res = await fetch(`/api/admin/appointments/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        loadDay();
+      } else {
+        if (card) card.style.opacity = '1';
+        alert('שגיאה בעדכון');
+      }
+    } catch (e) {
+      if (card) card.style.opacity = '1';
+    }
+  }
+
+  function confirmCancel(id, name) {
+    if (confirm(`לבטל את התור של ${name}?`)) {
+      updateStatus(id, 'cancelled');
+    }
+  }
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    const saved = sessionStorage.getItem('adminPin');
+    if (saved) {
+      adminPin = saved;
+      pin = saved;
+      showApp();
+    }
+  });
+</script>
+</body>
+</html>

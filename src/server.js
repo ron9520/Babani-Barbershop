@@ -25,6 +25,67 @@ function createServer() {
   // Green-API webhook
   app.post('/webhook', webhookHandler);
 
+  // ─── Admin API ──────────────────────────────────────────────────────────────
+
+  function adminAuth(req, res, next) {
+    const pin = req.headers['x-admin-pin'];
+    if (!process.env.ADMIN_PIN || pin !== process.env.ADMIN_PIN) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+  }
+
+  // POST /api/admin/login
+  app.post('/api/admin/login', (req, res) => {
+    const { pin } = req.body;
+    if (!process.env.ADMIN_PIN || pin !== process.env.ADMIN_PIN) {
+      return res.status(401).json({ error: 'קוד שגוי' });
+    }
+    res.json({ success: true });
+  });
+
+  // GET /api/admin/appointments?date=YYYY-MM-DD
+  app.get('/api/admin/appointments', adminAuth, async (req, res) => {
+    try {
+      const { date } = req.query;
+      if (!date) return res.status(400).json({ error: 'date required' });
+
+      const start = DateTime.fromISO(date, { zone: TZ }).startOf('day').toISO();
+      const end   = DateTime.fromISO(date, { zone: TZ }).endOf('day').toISO();
+
+      const appointments = await firebaseService.getAppointmentsInRange(start, end);
+      appointments.sort((a, b) => a.startISO.localeCompare(b.startISO));
+      res.json(appointments);
+    } catch (err) {
+      logger.error('GET /api/admin/appointments error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // PATCH /api/admin/appointments/:id/status
+  app.patch('/api/admin/appointments/:id/status', adminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      if (!['completed', 'cancelled', 'no_show'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+
+      if (status === 'cancelled') {
+        const apt = await firebaseService.getAppointmentById(id);
+        if (apt?.calendarEventId) {
+          try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {}
+        }
+      }
+
+      await firebaseService.updateAppointmentStatus(id, status);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('PATCH /api/admin/appointments status error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
   // ─── Booking API ────────────────────────────────────────────────────────────
 
   // GET /api/services — list all services

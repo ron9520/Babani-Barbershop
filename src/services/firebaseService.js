@@ -101,6 +101,14 @@ async function getAppointmentsInRange(startISO, endISO) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+async function updateAppointmentStatus(id, status) {
+  const update = { status };
+  if (status === 'completed') update.completedAt = admin.firestore.FieldValue.serverTimestamp();
+  if (status === 'cancelled') update.cancelledAt = admin.firestore.FieldValue.serverTimestamp();
+  await getDb().collection('appointments').doc(id).update(update);
+  logger.info('Appointment status updated', { id, status });
+}
+
 async function clearAllData() {
   const db = getDb();
   const [appointmentsSnap, sessionsSnap] = await Promise.all([
@@ -126,5 +134,6 @@ module.exports = {
   getAppointmentByPhone,
   cancelAppointment,
   getAppointmentsInRange,
+  updateAppointmentStatus,
   clearAllData
 };
