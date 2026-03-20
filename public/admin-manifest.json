@@ -1,0 +1,26 @@
+{
+  "name": "בבאני — ניהול",
+  "short_name": "בבאני ✂️",
+  "description": "פאנל ניהול — מספרת בבאני",
+  "start_url": "/admin.html",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "dir": "rtl",
+  "lang": "he",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
