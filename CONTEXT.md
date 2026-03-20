@@ -1,17 +1,34 @@
 # מספרת בבאני — הקשר פרויקט
 
+## ❌ החלטות ארכיטקטורה (חשוב לקרוא!)
+
+### הסרת Green-API ו-Twilio (20/03/2026)
+**ירדנו מרעיון ה-WhatsApp Bot לחלוטין.**
+- אין להוסיף קוד חדש שמשתמש ב-Green-API או Twilio
+- אין להוסיף webhook של WhatsApp
+- אין לשמר את תיקיית `src/bot/` — למחוק בשלב הניקיון
+- אין לשמר את `src/services/whatsappService.js` ו-`src/services/twilioService.js`
+- תזכורות ללקוחות יישלחו רק דרך **Push Notifications (FCM)** — לא WhatsApp
+- כל ה-ENV variables של Green-API / Twilio ניתנים להסרה
+
+**קבצים למחיקה (בשלב הניקיון):**
+- `src/bot/` (כל התיקייה)
+- `src/services/whatsappService.js`
+- `src/services/twilioService.js`
+- `src/jobs/reminderJob.js` — לנקות את כל הקריאות ל-WhatsApp, להשאיר רק FCM push + Google Calendar
+
+---
+
 ## מה בנינו עד עכשיו
 - [x] מבנה פרויקט מלא (Node.js + Express)
-- [x] Green-API WhatsApp — webhook + שליחת הודעות
+- [x] ~~Green-API WhatsApp — webhook + שליחת הודעות~~ **(הוסר — ראה מעלה)**
 - [x] Firebase Firestore — sessions + appointments
 - [x] Google Calendar — יצירה/מחיקה/בדיקת זמינות
-- [x] לוגיקת שיחה מלאה (בחירת שירות → תאריך → שעה → שם → אישור)
 - [x] מניעת race conditions בקביעת תורים
-- [x] תזכורת יומית אוטומטית (node-cron, 08:00)
-- [x] ביטול תורים (WhatsApp + Calendar)
+- [x] תזכורת יומית אוטומטית (node-cron, 08:00) — FCM בלבד
+- [x] ביטול תורים (Calendar)
 - [x] Winston לוגים
 - [x] config.json עם שירותים ומחירים
-- [x] ngrok + בדיקה אמיתית ✅
 - [x] דף הזמנה (public/booking.html) — הזמנת תור מהדפדפן
 - [x] Admin API בסיסי — /api/admin/login + /api/admin/appointments (GET + PATCH status)
 

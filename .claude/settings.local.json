@@ -19,7 +19,10 @@
       "Bash(echo:*)",
       "WebFetch(domain:babani-barbershop.onrender.com)",
       "Bash(ls:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(rm -rf src/bot)",
+      "Bash(rm src/services/whatsappService.js src/services/twilioService.js)",
+      "Bash(npm run:*)"
     ]
   }
 }

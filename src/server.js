@@ -2,16 +2,23 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { DateTime } = require('luxon');
-const { webhookHandler } = require('./bot/messageHandler');
 const calendarService = require('./services/calendarService');
 const firebaseService = require('./services/firebaseService');
-const whatsappService = require('./services/whatsappService');
 const authService = require('./services/authService');
 const statsService = require('./services/statsService');
 const notificationService = require('./services/notificationService');
 const { generateSlots, getAvailableDates, getEffectiveWorkingHours, getWorkingHours, fromISO, formatDate, formatTime, nowInIsrael, TZ } = require('./utils/timeUtils');
 const logger = require('./utils/logger');
 const config = require('../config/config.json');
+
+// Phone normalizer — extracted from whatsappService (WhatsApp removed 20/03/2026)
+function normalizePhone(raw) {
+  if (!raw) return null;
+  let num = raw.replace('whatsapp:', '').replace('@c.us', '').replace(/\s|-/g, '');
+  if (num.startsWith('+')) num = num.slice(1);
+  if (num.startsWith('05')) num = '972' + num.slice(1);
+  return num;
+}
 
 function createServer() {
   const app = express();
@@ -28,9 +35,6 @@ function createServer() {
 
   // Health check
   app.get('/health', (req, res) => res.json({ status: 'ok', shop: 'מספרת בבאני' }));
-
-  // Green-API webhook
-  app.post('/webhook', webhookHandler);
 
   // ─── Admin API ──────────────────────────────────────────────────────────────
 
@@ -109,7 +113,7 @@ function createServer() {
     try {
       const { phone } = req.body;
       if (!phone) return res.status(400).json({ error: 'phone required' });
-      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const normalizedPhone = normalizePhone(phone);
       const blocked = await firebaseService.isCustomerBlocked(normalizedPhone);
       if (blocked) return res.status(403).json({ error: 'מספר זה חסום' });
       const token = authService.signCustomerToken(normalizedPhone);
@@ -126,18 +130,13 @@ function createServer() {
       const { phone } = req.body;
       if (!phone) return res.status(400).json({ error: 'phone required' });
 
-      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const normalizedPhone = normalizePhone(phone);
       if (!normalizedPhone) return res.status(400).json({ error: 'Invalid phone' });
 
       const otp = await authService.createOTP(normalizedPhone);
 
-      try {
-        await whatsappService.sendMessage(normalizedPhone,
-          `✂️ *מספרת בבאני — קוד אימות*\n\nקוד הכניסה שלך: *${otp}*\n\nתוקף: 5 דקות\n_אם לא ביקשת קוד, התעלם מהודעה זו_`
-        );
-      } catch (e) {
-        logger.warn('Failed to send OTP via WhatsApp', { phone: normalizedPhone, error: e.message });
-      }
+      // TODO: deliver OTP via FCM / SMS (WhatsApp removed 20/03/2026)
+      logger.info('OTP created — delivery pending FCM/SMS implementation', { phone: normalizedPhone });
 
       res.json({ success: true, expiresIn: 300 });
     } catch (err) {
@@ -156,7 +155,7 @@ function createServer() {
       const { phone, otp } = req.body;
       if (!phone || !otp) return res.status(400).json({ error: 'phone and otp required' });
 
-      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const normalizedPhone = normalizePhone(phone);
       const ok = await authService.verifyOTP(normalizedPhone, otp);
 
       if (!ok) return res.status(401).json({ error: 'קוד שגוי' });
@@ -283,8 +282,7 @@ function createServer() {
       }
       await firebaseService.updateAppointmentStatus(req.params.id, 'cancelled', { cancelledBy: 'customer' });
 
-      // Notify barber
-      try { await whatsappService.notifyBarberCancellation(apt); } catch (_) {}
+      // Notify barber via FCM push
       notificationService.sendToAdmin(
         '❌ תור בוטל',
         `${apt.customerName} ביטל את התור ל-${apt.timeDisplay} (${apt.dateDisplay})`
@@ -512,7 +510,7 @@ function createServer() {
 
       if (!start.isValid) return res.status(400).json({ error: 'Invalid date/time' });
 
-      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const normalizedPhone = normalizePhone(phone);
 
       // Create calendar event (includes availability double-check)
       const eventId = await calendarService.createAppointment({
@@ -546,37 +544,6 @@ function createServer() {
         source: 'web'
       });
 
-      // Send WhatsApp to customer
-      try {
-        const customerMsg =
-          `🎉 *התור נקבע בהצלחה!*\n\n` +
-          `👤 שם: ${customerName}\n` +
-          `💈 שירות: ${service.name}\n` +
-          `📅 תאריך: ${dateDisplay}\n` +
-          `🕐 שעה: ${timeDisplay}\n` +
-          `💰 מחיר: ₪${service.price}\n\n` +
-          `📍 ${config.shop.name}\n` +
-          `_ביום שלפני התור תקבל תזכורת_\n\n` +
-          `כדי לבטל את התור שלח *ביטול* להודעה זו`;
-        await whatsappService.sendMessage(normalizedPhone, customerMsg);
-      } catch (err) {
-        logger.error('Failed to send customer confirmation', { error: err.message });
-      }
-
-      // Send WhatsApp to barber
-      try {
-        await whatsappService.notifyBarber({
-          customerName,
-          serviceName: service.name,
-          servicePrice: service.price,
-          dateDisplay,
-          timeDisplay,
-          phone: normalizedPhone
-        }, true);
-      } catch (err) {
-        logger.error('Failed to notify barber', { error: err.message });
-      }
-
       // Push notification to barber's device
       notificationService.sendToAdmin(
         '📅 תור חדש נקבע',
@@ -605,26 +572,6 @@ function createServer() {
     }
   });
 
-  // ─── Customer Appointments ───────────────────────────────────────────────────
-
-  app.get('/api/customer/appointments', customerAuth, async (req, res) => {
-    try {
-      const allApts = await firebaseService.getAllAppointmentsByPhone(req.customerPhone);
-      const now = nowInIsrael().toISO();
-      const upcoming = allApts
-        .filter(a => a.startISO >= now && a.status === 'confirmed')
-        .sort((a, b) => a.startISO.localeCompare(b.startISO));
-      const history = allApts
-        .filter(a => a.startISO < now || ['completed', 'cancelled', 'no_show'].includes(a.status))
-        .sort((a, b) => b.startISO.localeCompare(a.startISO))
-        .slice(0, 20);
-      res.json({ upcoming, history });
-    } catch (err) {
-      logger.error('GET /api/customer/appointments error', { error: err.message });
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
-
   app.delete('/api/customer/appointments/:id', customerAuth, async (req, res) => {
     try {
       const apt = await firebaseService.getAppointmentById(req.params.id);
@@ -642,22 +589,7 @@ function createServer() {
       }
       await firebaseService.updateAppointmentStatus(req.params.id, 'cancelled', { cancelledBy: 'customer' });
 
-      try { await whatsappService.notifyBarberCancellation({ customerName: apt.customerName, serviceName: apt.serviceName, dateDisplay: apt.dateDisplay, timeDisplay: apt.timeDisplay, phone: apt.phone }); } catch (_) {}
-
-      // Notify first on waiting list
-      try {
-        const waiting = await firebaseService.getWaitingListForDate(apt.startISO.slice(0, 10));
-        if (waiting.length > 0) {
-          const first = waiting[0];
-          await whatsappService.sendMessage(first.phone,
-            `✂️ *מספרת בבאני — נפתח מקום!*\n\nהיי ${first.customerName}! 👋\n` +
-            `נפתחה שעה פנויה ב-${apt.dateDisplay} בשעה ${apt.timeDisplay}.\n` +
-            `מהר לפני שיתפס: ${process.env.SERVER_URL || ''}`
-          );
-          await firebaseService.markWaitingListNotified(first.id);
-        }
-      } catch (_) {}
-
+      // TODO: notify waiting list via FCM push (WhatsApp removed 20/03/2026)
       res.json({ success: true });
     } catch (err) {
       logger.error('DELETE /api/customer/appointments error', { error: err.message });
@@ -680,7 +612,7 @@ function createServer() {
       const [hour, minute] = time.split(':').map(Number);
       const start = DateTime.fromISO(date, { zone: TZ }).set({ hour, minute, second: 0, millisecond: 0 });
       const end   = start.plus({ minutes: service.durationMinutes });
-      const normalizedPhone = phone ? whatsappService.normalizePhone(phone) : null;
+      const normalizedPhone = phone ? normalizePhone(phone) : null;
 
       const eventId = await calendarService.createAppointment({ startISO: start.toISO(), endISO: end.toISO(), customerName, serviceName: service.name, phone: normalizedPhone || 'walk-in' });
       if (!eventId) return res.status(409).json({ error: 'slot_taken' });
@@ -694,9 +626,6 @@ function createServer() {
         dateDisplay, timeDisplay, calendarEventId: eventId, status: 'confirmed', source: 'walkin'
       });
 
-      if (normalizedPhone) {
-        try { await whatsappService.sendMessage(normalizedPhone, `🎉 *התור נקבע בהצלחה!*\n\n👤 ${customerName}\n💈 ${service.name}\n📅 ${dateDisplay} | 🕐 ${timeDisplay}\n💰 ₪${service.price}\n\n📍 ${config.shop.name}\nלביטול שלח *ביטול*`); } catch (_) {}
-      }
       res.json({ success: true, id: aptId, dateDisplay, timeDisplay });
     } catch (err) {
       logger.error('POST /api/admin/appointments/walkin error', { error: err.message });
@@ -717,14 +646,7 @@ function createServer() {
       for (const apt of active) {
         if (apt.calendarEventId) { try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {} }
         await firebaseService.updateAppointmentStatus(apt.id, 'cancelled', { cancelledBy: 'barber' });
-        try {
-          await whatsappService.sendMessage(apt.phone,
-            `❌ *שים לב — התור שלך בוטל*\n\nשלום ${apt.customerName},\n` +
-            (reason ? `${reason}\n\n` : '') +
-            `התור שלך ב-${apt.dateDisplay} בשעה ${apt.timeDisplay} בוטל.\nלקביעת תור חדש: ${process.env.SERVER_URL || 'שלח הודעה'}`
-          );
-          await new Promise(r => setTimeout(r, 300));
-        } catch (_) {}
+        // TODO: notify customer via FCM push (WhatsApp removed 20/03/2026)
         cancelled++;
       }
       logger.info('Day cancelled', { date, cancelled });
@@ -789,10 +711,8 @@ function createServer() {
       const recipients = await firebaseService.getBroadcastRecipients(daysSince);
       res.json({ success: true, total: recipients.length, status: 'sending' });
       let sent = 0, failed = 0;
-      for (const phone of recipients) {
-        try { await whatsappService.sendMessage(phone, message); sent++; await new Promise(r => setTimeout(r, 400)); } catch (_) { failed++; }
-      }
-      logger.info('Broadcast sent', { sent, failed, total: recipients.length });
+      // TODO: send broadcast via FCM push (WhatsApp removed 20/03/2026)
+      logger.info('Broadcast: FCM push not yet implemented', { total: recipients.length });
     } catch (err) {
       logger.error('POST /api/admin/broadcast error', { error: err.message });
       if (!res.headersSent) res.status(500).json({ error: 'Server error' });
@@ -826,7 +746,7 @@ function createServer() {
       const rows = appointments.map(a => [
         a.dateDisplay||'', a.timeDisplay||'', a.customerName||'',
         (a.phone||'').replace('whatsapp:','').replace(/^972/,'0'),
-        a.serviceName||'', a.servicePrice||'', a.status||'', a.source||'whatsapp'
+        a.serviceName||'', a.servicePrice||'', a.status||'', a.source||'web'
       ]);
       const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -857,9 +777,9 @@ function createServer() {
     try {
       const { date, phone, customerName, serviceId, serviceName } = req.body;
       if (!date || !phone || !customerName) return res.status(400).json({ error: 'date, phone, customerName required' });
-      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const normalizedPhone = normalizePhone(phone);
       const id = await firebaseService.addToWaitingList({ date, phone: normalizedPhone, customerName, serviceId: serviceId||null, serviceName: serviceName||null });
-      try { await whatsappService.sendMessage(normalizedPhone, `✅ *נרשמת לרשימת ההמתנה*\n\nהיי ${customerName}! 👋\nנרשמת לרשימת ההמתנה ל-${date}. כשיתפנה מקום — נעדכן אותך מיידית! 💈`); } catch (_) {}
+      // TODO: notify via FCM push (WhatsApp removed 20/03/2026)
       res.json({ success: true, id });
     } catch (err) {
       logger.error('POST /api/waiting-list error', { error: err.message });
@@ -888,7 +808,7 @@ function createServer() {
 
   // Customer SPA catch-all
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/webhook')) return next();
+    if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(clientDist, 'index.html'), err => {
       if (err) next();
     });

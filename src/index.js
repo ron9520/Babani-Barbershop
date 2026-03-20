@@ -9,7 +9,7 @@ const logger = require('./utils/logger');
 const PORT = process.env.PORT || 3000;
 
 async function main() {
-  logger.info('Starting Babani Barber Shop WhatsApp Bot...');
+  logger.info('Starting Babani Barber Shop Server...');
   validateEnv();
 
   // Initialize Firebase
@@ -22,14 +22,13 @@ async function main() {
   const app = createServer();
   app.listen(PORT, () => {
     logger.info(`Server listening on port ${PORT}`);
-    logger.info(`Webhook URL: http://localhost:${PORT}/webhook`);
     logger.info(`Health: http://localhost:${PORT}/health`);
   });
 
   // Schedule all cron jobs (reminders, daily summary, weekly report, review requests, rebooking nudges, keep-alive)
   scheduleAll(process.env.RENDER_EXTERNAL_URL);
 
-  logger.info('Bot is ready! ✂️');
+  logger.info('Server is ready! ✂️');
 }
 
 main().catch(err => {
