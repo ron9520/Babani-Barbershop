@@ -868,8 +868,23 @@ function createServer() {
   });
 
   // ── Serve React PWA (production) ──────────────────────────────────────────
+  const fs = require('fs');
   const clientDist = path.join(__dirname, '../client/dist');
   app.use(express.static(clientDist));
+
+  // Admin routes: serve React SPA with admin manifest (so PWA installs to /admin/day)
+  app.get(['/admin', '/admin/*'], (req, res, next) => {
+    const indexPath = path.join(clientDist, 'index.html');
+    try {
+      const html = fs.readFileSync(indexPath, 'utf8')
+        .replace('href="/manifest.json"', 'href="/admin-manifest.json"')
+        .replace('<meta name="apple-mobile-web-app-title" content="מספרת בבאני" />',
+                 '<meta name="apple-mobile-web-app-title" content="בבאני ניהול" />');
+      res.type('html').send(html);
+    } catch { next(); }
+  });
+
+  // Customer SPA catch-all
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/webhook')) return next();
     res.sendFile(path.join(clientDist, 'index.html'), err => {
