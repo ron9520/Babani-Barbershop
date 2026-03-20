@@ -7,7 +7,8 @@ const calendarService = require('./services/calendarService');
 const firebaseService = require('./services/firebaseService');
 const whatsappService = require('./services/whatsappService');
 const authService = require('./services/authService');
-const { generateSlots, getAvailableDates, getEffectiveWorkingHours, getWorkingHours, fromISO, formatDate, formatTime, TZ } = require('./utils/timeUtils');
+const statsService = require('./services/statsService');
+const { generateSlots, getAvailableDates, getEffectiveWorkingHours, getWorkingHours, fromISO, formatDate, formatTime, nowInIsrael, TZ } = require('./utils/timeUtils');
 const logger = require('./utils/logger');
 const config = require('../config/config.json');
 
@@ -485,12 +486,8 @@ function createServer() {
     }
   });
 
-  // POST /api/admin/reset — delete all test data (Firestore + Calendar)
-  app.post('/api/admin/reset', async (req, res) => {
-    const key = req.query.key || req.body?.key;
-    if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+  // POST /api/admin/reset — ✅ FIXED: protected by adminAuth JWT (removed ADMIN_KEY)
+  app.post('/api/admin/reset', adminAuth, async (req, res) => {
     try {
       const [appointments, events] = await Promise.all([
         firebaseService.clearAllData(),
@@ -501,6 +498,268 @@ function createServer() {
     } catch (err) {
       logger.error('Admin reset failed', { error: err.message });
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Customer Appointments ───────────────────────────────────────────────────
+
+  app.get('/api/customer/appointments', customerAuth, async (req, res) => {
+    try {
+      const allApts = await firebaseService.getAllAppointmentsByPhone(req.customerPhone);
+      const now = nowInIsrael().toISO();
+      const upcoming = allApts
+        .filter(a => a.startISO >= now && a.status === 'confirmed')
+        .sort((a, b) => a.startISO.localeCompare(b.startISO));
+      const history = allApts
+        .filter(a => a.startISO < now || ['completed', 'cancelled', 'no_show'].includes(a.status))
+        .sort((a, b) => b.startISO.localeCompare(a.startISO))
+        .slice(0, 20);
+      res.json({ upcoming, history });
+    } catch (err) {
+      logger.error('GET /api/customer/appointments error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  app.delete('/api/customer/appointments/:id', customerAuth, async (req, res) => {
+    try {
+      const apt = await firebaseService.getAppointmentById(req.params.id);
+      if (!apt) return res.status(404).json({ error: 'תור לא נמצא' });
+      if (apt.phone !== req.customerPhone) return res.status(403).json({ error: 'Forbidden' });
+      if (apt.status !== 'confirmed') return res.status(400).json({ error: 'תור כבר בוטל או הסתיים' });
+
+      const hoursUntil = DateTime.fromISO(apt.startISO).diff(nowInIsrael(), 'hours').hours;
+      if (hoursUntil < 3) {
+        return res.status(400).json({ error: 'late_cancel', message: 'לא ניתן לבטל פחות מ-3 שעות לפני התור. צור קשר ישיר.' });
+      }
+
+      if (apt.calendarEventId) {
+        try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {}
+      }
+      await firebaseService.updateAppointmentStatus(req.params.id, 'cancelled', { cancelledBy: 'customer' });
+
+      try { await whatsappService.notifyBarberCancellation({ customerName: apt.customerName, serviceName: apt.serviceName, dateDisplay: apt.dateDisplay, timeDisplay: apt.timeDisplay, phone: apt.phone }); } catch (_) {}
+
+      // Notify first on waiting list
+      try {
+        const waiting = await firebaseService.getWaitingListForDate(apt.startISO.slice(0, 10));
+        if (waiting.length > 0) {
+          const first = waiting[0];
+          await whatsappService.sendMessage(first.phone,
+            `✂️ *מספרת בבאני — נפתח מקום!*\n\nהיי ${first.customerName}! 👋\n` +
+            `נפתחה שעה פנויה ב-${apt.dateDisplay} בשעה ${apt.timeDisplay}.\n` +
+            `מהר לפני שיתפס: ${process.env.SERVER_URL || ''}`
+          );
+          await firebaseService.markWaitingListNotified(first.id);
+        }
+      } catch (_) {}
+
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('DELETE /api/customer/appointments error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Admin: Walk-in ──────────────────────────────────────────────────────────
+
+  app.post('/api/admin/appointments/walkin', adminAuth, async (req, res) => {
+    try {
+      const { serviceId, date, time, customerName, phone } = req.body;
+      if (!serviceId || !date || !time || !customerName) {
+        return res.status(400).json({ error: 'serviceId, date, time, customerName required' });
+      }
+      let service = await firebaseService.getServiceById(serviceId);
+      if (!service) service = config.services.find(s => s.id === serviceId);
+      if (!service) return res.status(400).json({ error: 'Invalid service' });
+
+      const [hour, minute] = time.split(':').map(Number);
+      const start = DateTime.fromISO(date, { zone: TZ }).set({ hour, minute, second: 0, millisecond: 0 });
+      const end   = start.plus({ minutes: service.durationMinutes });
+      const normalizedPhone = phone ? whatsappService.normalizePhone(phone) : null;
+
+      const eventId = await calendarService.createAppointment({ startISO: start.toISO(), endISO: end.toISO(), customerName, serviceName: service.name, phone: normalizedPhone || 'walk-in' });
+      if (!eventId) return res.status(409).json({ error: 'slot_taken' });
+
+      const dateDisplay = formatDate(start);
+      const timeDisplay = formatTime(start);
+
+      const aptId = await firebaseService.saveAppointment({
+        phone: normalizedPhone || 'walk-in', customerName, serviceId: service.id, serviceName: service.name,
+        servicePrice: service.price, startISO: start.toISO(), endISO: end.toISO(),
+        dateDisplay, timeDisplay, calendarEventId: eventId, status: 'confirmed', source: 'walkin'
+      });
+
+      if (normalizedPhone) {
+        try { await whatsappService.sendMessage(normalizedPhone, `🎉 *התור נקבע בהצלחה!*\n\n👤 ${customerName}\n💈 ${service.name}\n📅 ${dateDisplay} | 🕐 ${timeDisplay}\n💰 ₪${service.price}\n\n📍 ${config.shop.name}\nלביטול שלח *ביטול*`); } catch (_) {}
+      }
+      res.json({ success: true, id: aptId, dateDisplay, timeDisplay });
+    } catch (err) {
+      logger.error('POST /api/admin/appointments/walkin error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // DELETE /api/admin/appointments/day/:date — cancel entire day
+  app.delete('/api/admin/appointments/day/:date', adminAuth, async (req, res) => {
+    try {
+      const { date } = req.params;
+      const { reason } = req.body || {};
+      const startISO = DateTime.fromISO(date, { zone: TZ }).startOf('day').toISO();
+      const endISO   = DateTime.fromISO(date, { zone: TZ }).endOf('day').toISO();
+      const appointments = await firebaseService.getAppointmentsInRangeAll(startISO, endISO);
+      const active = appointments.filter(a => a.status === 'confirmed');
+      let cancelled = 0;
+      for (const apt of active) {
+        if (apt.calendarEventId) { try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {} }
+        await firebaseService.updateAppointmentStatus(apt.id, 'cancelled', { cancelledBy: 'barber' });
+        try {
+          await whatsappService.sendMessage(apt.phone,
+            `❌ *שים לב — התור שלך בוטל*\n\nשלום ${apt.customerName},\n` +
+            (reason ? `${reason}\n\n` : '') +
+            `התור שלך ב-${apt.dateDisplay} בשעה ${apt.timeDisplay} בוטל.\nלקביעת תור חדש: ${process.env.SERVER_URL || 'שלח הודעה'}`
+          );
+          await new Promise(r => setTimeout(r, 300));
+        } catch (_) {}
+        cancelled++;
+      }
+      logger.info('Day cancelled', { date, cancelled });
+      res.json({ success: true, cancelled });
+    } catch (err) {
+      logger.error('DELETE /api/admin/appointments/day error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Admin: Customer Profile ─────────────────────────────────────────────────
+
+  app.get('/api/admin/customers/:phone', adminAuth, async (req, res) => {
+    try {
+      const profile = await firebaseService.getCustomerProfile(req.params.phone);
+      const recentApts = await firebaseService.getAllAppointmentsByPhone(req.params.phone);
+      res.json({ ...profile, recentAppointments: recentApts.slice(0, 10) });
+    } catch (err) {
+      logger.error('GET /api/admin/customers error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  app.patch('/api/admin/customers/:phone', adminAuth, async (req, res) => {
+    try {
+      const { notes, isBlocked, blockedReason } = req.body;
+      const phone = req.params.phone;
+      if (isBlocked === true)  await firebaseService.blockCustomer(phone, blockedReason || '');
+      if (isBlocked === false) await firebaseService.unblockCustomer(phone);
+      if (notes !== undefined) await firebaseService.upsertCustomerProfile(phone, { notes });
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('PATCH /api/admin/customers error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Admin: Stats ────────────────────────────────────────────────────────────
+
+  app.get('/api/admin/stats', adminAuth, async (req, res) => {
+    try {
+      const { period = 'week' } = req.query;
+      const now = nowInIsrael();
+      let startISO, endISO;
+      if (period === 'today')      { startISO = now.startOf('day').toISO();   endISO = now.endOf('day').toISO(); }
+      else if (period === 'month') { startISO = now.startOf('month').toISO(); endISO = now.endOf('month').toISO(); }
+      else                         { startISO = now.startOf('week').toISO();  endISO = now.endOf('week').toISO(); }
+      const stats = await firebaseService.getStatsData(startISO, endISO);
+      res.json(stats);
+    } catch (err) {
+      logger.error('GET /api/admin/stats error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Admin: Broadcast ────────────────────────────────────────────────────────
+
+  app.post('/api/admin/broadcast', adminAuth, async (req, res) => {
+    try {
+      const { message, daysSince = 30 } = req.body;
+      if (!message || message.trim().length < 5) return res.status(400).json({ error: 'message required' });
+      const recipients = await firebaseService.getBroadcastRecipients(daysSince);
+      res.json({ success: true, total: recipients.length, status: 'sending' });
+      let sent = 0, failed = 0;
+      for (const phone of recipients) {
+        try { await whatsappService.sendMessage(phone, message); sent++; await new Promise(r => setTimeout(r, 400)); } catch (_) { failed++; }
+      }
+      logger.info('Broadcast sent', { sent, failed, total: recipients.length });
+    } catch (err) {
+      logger.error('POST /api/admin/broadcast error', { error: err.message });
+      if (!res.headersSent) res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Admin: Stats ────────────────────────────────────────────────────────────
+
+  app.get('/api/admin/stats', adminAuth, async (req, res) => {
+    try {
+      const period = req.query.period || 'today';
+      const stats = await statsService.getStats(period);
+      res.json(stats);
+    } catch (err) {
+      logger.error('GET /api/admin/stats error', { error: err.message });
+      res.status(500).json({ error: err.message || 'Server error' });
+    }
+  });
+
+  // ─── Admin: CSV Export ───────────────────────────────────────────────────────
+
+  app.get('/api/admin/export/csv', adminAuth, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const now = nowInIsrael();
+      const startISO = from ? DateTime.fromISO(from, { zone: TZ }).startOf('day').toISO() : now.startOf('month').toISO();
+      const endISO   = to   ? DateTime.fromISO(to,   { zone: TZ }).endOf('day').toISO()   : now.endOf('month').toISO();
+      const appointments = await firebaseService.getAppointmentsInRangeAll(startISO, endISO);
+      appointments.sort((a, b) => a.startISO.localeCompare(b.startISO));
+      const headers = ['תאריך','שעה','שם לקוח','טלפון','שירות','מחיר','סטטוס','מקור'];
+      const rows = appointments.map(a => [
+        a.dateDisplay||'', a.timeDisplay||'', a.customerName||'',
+        (a.phone||'').replace('whatsapp:','').replace(/^972/,'0'),
+        a.serviceName||'', a.servicePrice||'', a.status||'', a.source||'whatsapp'
+      ]);
+      const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="appointments_${from||now.toFormat('yyyy-MM')}.csv"`);
+      res.send('\uFEFF' + csv);
+    } catch (err) {
+      logger.error('GET /api/admin/export/csv error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Waiting List ────────────────────────────────────────────────────────────
+
+  app.get('/api/admin/waiting-list/:date', adminAuth, async (req, res) => {
+    try {
+      res.json(await firebaseService.getWaitingListForDate(req.params.date));
+    } catch (err) { res.status(500).json({ error: 'Server error' }); }
+  });
+
+  app.delete('/api/admin/waiting-list/:id', adminAuth, async (req, res) => {
+    try {
+      await firebaseService.removeFromWaitingList(req.params.id);
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: 'Server error' }); }
+  });
+
+  app.post('/api/waiting-list', async (req, res) => {
+    try {
+      const { date, phone, customerName, serviceId, serviceName } = req.body;
+      if (!date || !phone || !customerName) return res.status(400).json({ error: 'date, phone, customerName required' });
+      const normalizedPhone = whatsappService.normalizePhone(phone);
+      const id = await firebaseService.addToWaitingList({ date, phone: normalizedPhone, customerName, serviceId: serviceId||null, serviceName: serviceName||null });
+      try { await whatsappService.sendMessage(normalizedPhone, `✅ *נרשמת לרשימת ההמתנה*\n\nהיי ${customerName}! 👋\nנרשמת לרשימת ההמתנה ל-${date}. כשיתפנה מקום — נעדכן אותך מיידית! 💈`); } catch (_) {}
+      res.json({ success: true, id });
+    } catch (err) {
+      logger.error('POST /api/waiting-list error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
     }
   });
 
