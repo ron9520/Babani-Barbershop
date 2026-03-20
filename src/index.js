@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { createServer } = require('./server');
-const { init: initFirebase } = require('./services/firebaseService');
+const { init: initFirebase, migrateServicesIfNeeded } = require('./services/firebaseService');
 const { scheduleReminders, scheduleKeepAlive } = require('./jobs/reminderJob');
+const config = require('../config/config.json');
 const { validateEnv } = require('./utils/validateEnv');
 const logger = require('./utils/logger');
 
@@ -13,6 +14,9 @@ async function main() {
 
   // Initialize Firebase
   initFirebase();
+
+  // Migrate services from config.json to Firestore (one-time, if empty)
+  await migrateServicesIfNeeded(config.services);
 
   // Start Express server
   const app = createServer();

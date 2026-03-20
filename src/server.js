@@ -232,9 +232,62 @@ function createServer() {
 
   // ─── Booking API ────────────────────────────────────────────────────────────
 
-  // GET /api/services — list all services
-  app.get('/api/services', (req, res) => {
-    res.json(config.services);
+  // GET /api/services — list all services (Firestore, fallback to config)
+  app.get('/api/services', async (req, res) => {
+    try {
+      const services = await firebaseService.getServices();
+      res.json(services.length ? services : config.services);
+    } catch (err) {
+      res.json(config.services);
+    }
+  });
+
+  // GET /api/admin/services
+  app.get('/api/admin/services', adminAuth, async (req, res) => {
+    try {
+      const services = await firebaseService.getServices();
+      res.json(services);
+    } catch (err) {
+      logger.error('GET /api/admin/services error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // POST /api/admin/services
+  app.post('/api/admin/services', adminAuth, async (req, res) => {
+    try {
+      const { name, price, durationMinutes, order } = req.body;
+      if (!name || !price || !durationMinutes) {
+        return res.status(400).json({ error: 'name, price, durationMinutes required' });
+      }
+      const id = await firebaseService.createService({ name, price, durationMinutes, order: order || 99 });
+      res.json({ success: true, id });
+    } catch (err) {
+      logger.error('POST /api/admin/services error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // PUT /api/admin/services/:id
+  app.put('/api/admin/services/:id', adminAuth, async (req, res) => {
+    try {
+      await firebaseService.updateService(req.params.id, req.body);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('PUT /api/admin/services error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // DELETE /api/admin/services/:id
+  app.delete('/api/admin/services/:id', adminAuth, async (req, res) => {
+    try {
+      await firebaseService.deleteService(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('DELETE /api/admin/services error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
   });
 
   // GET /api/slots?date=YYYY-MM-DD — available slots for a date
@@ -274,7 +327,8 @@ function createServer() {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      const service = config.services.find(s => s.id === serviceId);
+      let service = await firebaseService.getServiceById(serviceId);
+      if (!service) service = config.services.find(s => s.id === serviceId);
       if (!service) return res.status(400).json({ error: 'Invalid service' });
 
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {

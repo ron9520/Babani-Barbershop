@@ -124,6 +124,77 @@ async function clearAllData() {
   return appointmentsSnap.size;
 }
 
+// ─── Services (dynamic price list) ───────────────────────────────────────────
+
+async function getServices() {
+  const snap = await getDb().collection('services')
+    .where('active', '==', true)
+    .orderBy('order')
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function getServiceById(id) {
+  const doc = await getDb().collection('services').doc(id).get();
+  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+}
+
+async function createService({ id, name, price, durationMinutes, order }) {
+  const ref = id
+    ? getDb().collection('services').doc(id)
+    : getDb().collection('services').doc();
+  await ref.set({
+    name,
+    price: Number(price),
+    durationMinutes: Number(durationMinutes),
+    order: Number(order) || 0,
+    active: true,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  logger.info('Service created', { id: ref.id, name });
+  return ref.id;
+}
+
+async function updateService(id, fields) {
+  const allowed = ['name', 'price', 'durationMinutes', 'order', 'active'];
+  const update  = {};
+  for (const k of allowed) {
+    if (fields[k] !== undefined) update[k] = fields[k];
+  }
+  if (update.price !== undefined) update.price = Number(update.price);
+  if (update.durationMinutes !== undefined) update.durationMinutes = Number(update.durationMinutes);
+  await getDb().collection('services').doc(id).update(update);
+  logger.info('Service updated', { id, fields: Object.keys(update) });
+}
+
+async function deleteService(id) {
+  // Soft-delete: mark as inactive
+  await getDb().collection('services').doc(id).update({ active: false });
+  logger.info('Service deactivated', { id });
+}
+
+/**
+ * One-time migration: seeds Firestore `services` from config.json if collection is empty.
+ */
+async function migrateServicesIfNeeded(configServices) {
+  const snap = await getDb().collection('services').limit(1).get();
+  if (!snap.empty) return; // already migrated
+
+  const batch = getDb().batch();
+  configServices.forEach((s, i) => {
+    const ref = getDb().collection('services').doc(s.id);
+    batch.set(ref, {
+      name: s.name,
+      price: s.price,
+      durationMinutes: s.durationMinutes,
+      order: i,
+      active: true
+    });
+  });
+  await batch.commit();
+  logger.info('Services migrated from config.json to Firestore', { count: configServices.length });
+}
+
 // ─── Schedule Overrides ───────────────────────────────────────────────────────
 
 async function getScheduleOverride(dateISO) {
@@ -186,6 +257,12 @@ module.exports = {
   getAppointmentsInRange,
   updateAppointmentStatus,
   clearAllData,
+  getServices,
+  getServiceById,
+  createService,
+  updateService,
+  deleteService,
+  migrateServicesIfNeeded,
   getScheduleOverride,
   setScheduleOverride,
   deleteScheduleOverride,
