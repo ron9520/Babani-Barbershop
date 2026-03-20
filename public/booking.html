@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>קביעת תור — מספרת בבאני</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#c9a84c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="בבאני" />
+  <link rel="apple-touch-icon" href="/icons/icon.svg" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -823,6 +829,11 @@
     document.getElementById('btnStep1').disabled = true;
     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ─── Service Worker ───────────────────────────────────────────────────────
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js');
   }
 
   // ─── Admin ────────────────────────────────────────────────────────────────
