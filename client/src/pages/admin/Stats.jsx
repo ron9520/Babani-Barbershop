@@ -67,6 +67,9 @@ export default function Stats() {
             <StatCard icon="✅" label="הושלמו" value={stats.completed} color="text-success" />
             <StatCard icon="❌" label="בוטלו" value={stats.cancelled} color="text-danger" />
             <StatCard icon="👻" label="לא הגיעו" value={stats.noShow} color="text-warning" />
+            {stats.averageRating && (
+              <StatCard icon="⭐" label="דירוג ממוצע" value={stats.averageRating} color="text-yellow-400" />
+            )}
           </div>
 
           {/* Revenue */}

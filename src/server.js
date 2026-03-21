@@ -208,14 +208,26 @@ function createServer() {
         return res.status(400).json({ error: 'Invalid status' });
       }
 
+      const apt = await firebaseService.getAppointmentById(id);
+      if (!apt) return res.status(404).json({ error: 'Appointment not found' });
+
       if (status === 'cancelled') {
-        const apt = await firebaseService.getAppointmentById(id);
-        if (apt?.calendarEventId) {
+        if (apt.calendarEventId) {
           try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {}
         }
       }
 
       await firebaseService.updateAppointmentStatus(id, status);
+
+      // Auto-block customer after 3 no-shows
+      if (status === 'no_show') {
+        const noShowCount = await firebaseService.getNoShowCount(apt.phone);
+        if (noShowCount >= 3) {
+          await firebaseService.blockCustomer(apt.phone, 'חסום אוטומטית — 3 אי-הגעות');
+          logger.info('Customer auto-blocked after 3 no-shows', { phone: apt.phone });
+        }
+      }
+
       res.json({ success: true });
     } catch (err) {
       logger.error('PATCH /api/admin/appointments status error', { error: err.message });
@@ -294,6 +306,38 @@ function createServer() {
       res.json({ success: true });
     } catch (err) {
       logger.error('DELETE /api/customer/appointments error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // POST /api/customer/appointments/:id/rate — rate a completed appointment
+  app.post('/api/customer/appointments/:id/rate', customerAuth, async (req, res) => {
+    try {
+      const phone = req.customerPhone;
+      const { rating } = req.body;
+
+      // Validate rating
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+      }
+
+      // Get appointment
+      const apt = await firebaseService.getAppointmentById(req.params.id);
+      if (!apt) return res.status(404).json({ error: 'תור לא נמצא' });
+
+      // Verify ownership
+      if (apt.phone !== phone) return res.status(403).json({ error: 'אין הרשאה' });
+
+      // Check if completed
+      if (apt.status !== 'completed') {
+        return res.status(400).json({ error: 'ניתן לדרג רק תורים שהושלמו' });
+      }
+
+      // Rate the appointment
+      await firebaseService.rateAppointment(req.params.id, rating);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('POST /api/customer/appointments/:id/rate error', { error: err.message });
       res.status(500).json({ error: 'Server error' });
     }
   });
@@ -697,6 +741,92 @@ function createServer() {
     } catch (err) {
       logger.error('POST /api/admin/broadcast error', { error: err.message });
       if (!res.headersSent) res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // ─── Admin: Customer Export ──────────────────────────────────────────────────
+
+  app.get('/api/admin/customers/export', adminAuth, async (req, res) => {
+    try {
+      const BOM = '\uFEFF';
+
+      // Get stats data from a wide date range (all time)
+      const minDate = '2000-01-01T00:00:00.000Z';
+      const maxDate = '2099-12-31T23:59:59.999Z';
+
+      // Fetch all unique customers by looking at appointments
+      // We'll reconstruct the customer list from appointments
+      const customerMap = {};
+
+      // Use an approach that gets all phones from appointments
+      // by fetching in chunks or via a workaround
+      const allApts = [];
+
+      // Since we can't easily get "all" appointments, iterate through a year window
+      const now = nowInIsrael();
+      const twoYearsAgo = now.minus({ years: 2 });
+
+      for (let i = 0; i < 24; i++) {
+        const startOfMonth = twoYearsAgo.plus({ months: i }).startOf('month').toISO();
+        const endOfMonth = twoYearsAgo.plus({ months: i }).endOf('month').toISO();
+        const apts = await firebaseService.getAppointmentsInRangeAll(startOfMonth, endOfMonth);
+        allApts.push(...apts);
+      }
+
+      // Group by phone
+      allApts.forEach(apt => {
+        const phone = apt.phone;
+        if (!phone || phone === 'walk-in') return;
+
+        if (!customerMap[phone]) {
+          customerMap[phone] = {
+            phone,
+            name: apt.customerName || '',
+            visitCount: 0,
+            lastVisit: null,
+            totalSpent: 0
+          };
+        }
+
+        const customer = customerMap[phone];
+        // Always use the latest name if available
+        if (apt.customerName) customer.name = apt.customerName;
+
+        if (apt.status === 'completed') {
+          customer.visitCount++;
+          customer.totalSpent += apt.servicePrice || 0;
+          if (!customer.lastVisit || (apt.startISO && apt.startISO > customer.lastVisit)) {
+            customer.lastVisit = apt.dateDisplay || apt.startISO?.slice(0, 10) || '';
+          }
+        }
+      });
+
+      // Convert to array and sort by last visit descending
+      const customers = Object.values(customerMap)
+        .sort((a, b) => (b.lastVisit || '').localeCompare(a.lastVisit || ''));
+
+      // Build CSV with BOM for Excel Hebrew support
+      const headers = ['טלפון', 'שם', 'ביקורים', 'ביקור אחרון', 'סה"כ הוצאה'];
+      const rows = customers.map(c => [
+        c.phone,
+        c.name || 'לא ידוע',
+        c.visitCount,
+        c.lastVisit || '—',
+        c.totalSpent
+      ]);
+
+      const csvContent = [headers, ...rows]
+        .map(r => r.map(col => `"${String(col).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      const csv = BOM + csvContent;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename=customers.csv');
+      res.send(csv);
+    } catch (err) {
+      logger.error('GET /api/admin/customers/export error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
     }
   });
 

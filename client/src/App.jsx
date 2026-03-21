@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import AdminLogin    from './pages/admin/AdminLogin.jsx';
 import DayView       from './pages/admin/DayView.jsx';
 import WeekView      from './pages/admin/WeekView.jsx';
+import MonthCalendar from './pages/admin/MonthCalendar.jsx';
 import Stats         from './pages/admin/Stats.jsx';
 import Settings      from './pages/admin/Settings.jsx';
 import PriceList     from './pages/admin/PriceList.jsx';
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/admin"         element={<Navigate to="/admin/day" replace />} />
             <Route path="/admin/day"     element={<DayView />} />
             <Route path="/admin/week"    element={<WeekView />} />
+            <Route path="/admin/calendar" element={<MonthCalendar />} />
             <Route path="/admin/stats"   element={<Stats />} />
             <Route path="/admin/settings" element={<Settings />} />
             <Route path="/admin/prices"  element={<PriceList />} />

@@ -48,9 +48,36 @@ export default function Customers() {
 
   const flash = text => { setMsg(text); setTimeout(() => setMsg(''), 2500); };
 
+  const exportCSV = async () => {
+    try {
+      const res = await fetch('/api/admin/customers/export', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
+      });
+      if (!res.ok) {
+        flash('❌ שגיאה בייצוא');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash('✅ הלקוחות יוצאו בהצלחה');
+    } catch (err) {
+      flash('❌ ' + err.message);
+    }
+  };
+
   return (
     <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
-      <h1 className="text-xl font-bold mb-5">👤 פרופיל לקוח</h1>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-xl font-bold">👤 פרופיל לקוח</h1>
+        <button onClick={exportCSV} className="text-xs btn-ghost py-1.5 px-3">
+          ⬇️ CSV
+        </button>
+      </div>
 
       <form onSubmit={search} className="flex gap-2 mb-4">
         <input

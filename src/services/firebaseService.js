@@ -135,6 +135,17 @@ async function updateAppointmentStatus(id, status, extra = {}) {
   logger.info('Appointment status updated', { id, status });
 }
 
+async function rateAppointment(id, rating) {
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error('Rating must be between 1 and 5');
+  }
+  await getDb().collection('appointments').doc(id).update({
+    rating,
+    ratedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  logger.info('Appointment rated', { id, rating });
+}
+
 async function clearAllData() {
   const db = getDb();
   const [appointmentsSnap, sessionsSnap] = await Promise.all([
@@ -352,6 +363,14 @@ async function isCustomerBlocked(phone) {
   return doc.exists && doc.data().isBlocked === true;
 }
 
+async function getNoShowCount(phone) {
+  const snap = await getDb().collection('appointments')
+    .where('phone', '==', phone)
+    .where('status', '==', 'no_show')
+    .get();
+  return snap.size;
+}
+
 // ─── Waiting List ─────────────────────────────────────────────────────────────
 
 async function addToWaitingList({ date, phone, customerName, serviceId, serviceName }) {
@@ -436,6 +455,12 @@ async function getStatsData(startISO, endISO) {
     .filter(a => ['confirmed', 'completed'].includes(a.status))
     .reduce((sum, a) => sum + (a.servicePrice || 0), 0);
 
+  // Average rating
+  const ratedAppointments = appointments.filter(a => a.rating);
+  const averageRating = ratedAppointments.length > 0
+    ? (ratedAppointments.reduce((sum, a) => sum + a.rating, 0) / ratedAppointments.length).toFixed(1)
+    : null;
+
   // Popular services
   const serviceCount = {};
   appointments.filter(a => a.status !== 'cancelled').forEach(a => {
@@ -471,7 +496,7 @@ async function getStatsData(startISO, endISO) {
 
   return {
     total, completed, confirmed, cancelled, noShow,
-    totalRevenue, expectedRevenue,
+    totalRevenue, expectedRevenue, averageRating,
     popularServices, peakHours, dailyRevenue
   };
 }
@@ -489,6 +514,7 @@ module.exports = {
   getAppointmentsInRange,
   getAppointmentsInRangeAll,
   updateAppointmentStatus,
+  rateAppointment,
   clearAllData,
   getServices,
   getAllServices,
@@ -509,6 +535,7 @@ module.exports = {
   blockCustomer,
   unblockCustomer,
   isCustomerBlocked,
+  getNoShowCount,
   addToWaitingList,
   getWaitingListForDate,
   removeFromWaitingList,

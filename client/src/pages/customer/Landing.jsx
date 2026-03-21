@@ -28,7 +28,24 @@ export default function Landing() {
     );
   }
 
-  return <BookingDone onHome={() => { setStep(0); setBooking({}); }} />;
+  const handleRepeat = () => {
+    // Keep the service, clear date and time
+    setBooking(b => ({
+      ...b,
+      date: undefined,
+      dateDisplay: undefined,
+      time: undefined,
+      timeDisplay: undefined
+    }));
+    setStep(2); // Go to DateStep
+  };
+
+  return (
+    <BookingDone
+      onHome={() => { setStep(0); setBooking({}); }}
+      onRepeat={handleRepeat}
+    />
+  );
 }
 
 // ── Home screen ─────────────────────────────────────────────────────────────
@@ -334,14 +351,17 @@ function Row({ icon, label, value, dir }) {
 
 // ── Step 6: Done ─────────────────────────────────────────────────────────────
 
-function BookingDone({ onHome }) {
+function BookingDone({ onHome, onRepeat }) {
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6 text-center">
       <div className="text-6xl mb-4">✅</div>
       <h1 className="text-2xl font-bold">התור נקבע!</h1>
       <p className="text-muted mt-2">התור אושר! נתראה במספרה 💈</p>
       <div className="w-16 h-1 bg-primary rounded-full mt-4 mb-8" />
-      <button onClick={onHome} className="btn-primary w-full max-w-xs">
+      <button onClick={onRepeat} className="btn-primary w-full max-w-xs mb-2">
+        קבע תור חוזר
+      </button>
+      <button onClick={onHome} className="btn-ghost w-full max-w-xs">
         חזרה לדף הבית
       </button>
     </div>

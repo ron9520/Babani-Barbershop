@@ -4,6 +4,29 @@ import { useCustomerApi } from '../../hooks/useApi.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import AppointmentCard from '../../components/AppointmentCard.jsx';
 
+function StarRating({ onRate }) {
+  const [hoveredRating, setHoveredRating] = useState(0);
+
+  return (
+    <div className="flex justify-center gap-2">
+      {[1, 2, 3, 4, 5].map(rating => (
+        <button
+          key={rating}
+          onClick={() => onRate(rating)}
+          onMouseEnter={() => setHoveredRating(rating)}
+          onMouseLeave={() => setHoveredRating(0)}
+          className="text-2xl transition-colors cursor-pointer"
+          style={{
+            color: rating <= (hoveredRating || 0) ? '#facc15' : '#d1d5db'
+          }}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function MyAppointments() {
   const api      = useCustomerApi();
   const { logoutCustomer, customerPhone } = useAuth();
@@ -11,6 +34,7 @@ export default function MyAppointments() {
   const [apts, setApts]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg]       = useState('');
+  const [ratingId, setRatingId] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -27,6 +51,17 @@ export default function MyAppointments() {
     try {
       await api.del(`/customer/appointments/${id}`);
       flash('✅ התור בוטל');
+      load();
+    } catch (err) {
+      flash('❌ ' + err.message);
+    }
+  };
+
+  const rate = async (id, rating) => {
+    try {
+      await api.post(`/customer/appointments/${id}/rate`, { rating });
+      flash('תודה על הדירוג! ⭐');
+      setRatingId(null);
       load();
     } catch (err) {
       flash('❌ ' + err.message);
@@ -116,11 +151,30 @@ export default function MyAppointments() {
                 <h2 className="font-semibold text-muted text-sm mb-3">🕐 היסטוריה</h2>
                 <div className="flex flex-col gap-3">
                   {past.map(apt => (
-                    <AppointmentCard
-                      key={apt.id}
-                      apt={{ ...apt, dateDisplay: apt.dateDisplay || apt.startISO?.slice(0,10) }}
-                      compact
-                    />
+                    <div key={apt.id}>
+                      <AppointmentCard
+                        apt={{ ...apt, dateDisplay: apt.dateDisplay || apt.startISO?.slice(0,10) }}
+                        compact
+                      />
+                      {apt.status === 'completed' && !apt.rating && (
+                        <div className="mt-2 p-3 bg-surface rounded-xl">
+                          <p className="text-xs text-muted mb-2">דרג את התור</p>
+                          <StarRating
+                            onRate={(rating) => rate(apt.id, rating)}
+                          />
+                        </div>
+                      )}
+                      {apt.status === 'completed' && apt.rating && (
+                        <div className="mt-2 p-3 bg-success/10 rounded-xl text-center">
+                          <p className="text-sm text-success font-semibold">תודה על הדירוג! ⭐</p>
+                          <div className="mt-1">
+                            {[...Array(5)].map((_, i) => (
+                              <span key={i} className={i < apt.rating ? 'text-yellow-400' : 'text-gray-400'}>★</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </section>
