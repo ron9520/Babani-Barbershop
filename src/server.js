@@ -110,6 +110,23 @@ function createServer() {
     }
   });
 
+  // POST /api/customer/phone-login — temporary phone-only login (upgrade to OTP when SMS is ready)
+  app.post('/api/customer/phone-login', async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ error: 'phone required' });
+      const normalizedPhone = normalizePhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ error: 'Invalid phone' });
+      const blocked = await firebaseService.isCustomerBlocked(normalizedPhone);
+      if (blocked) return res.status(403).json({ error: 'מספר זה חסום' });
+      const token = authService.signCustomerToken(normalizedPhone);
+      res.json({ token, phone: normalizedPhone });
+    } catch (err) {
+      logger.error('POST /api/customer/phone-login error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
   // POST /api/customer/send-otp
   app.post('/api/customer/send-otp', async (req, res) => {
     try {
@@ -353,7 +370,7 @@ function createServer() {
   // GET /api/admin/services
   app.get('/api/admin/services', adminAuth, async (req, res) => {
     try {
-      const services = await firebaseService.getServices();
+      const services = await firebaseService.getAllServices();
       res.json(services);
     } catch (err) {
       logger.error('GET /api/admin/services error', { error: err.message });
@@ -561,31 +578,6 @@ function createServer() {
     }
   });
 
-  app.delete('/api/customer/appointments/:id', customerAuth, async (req, res) => {
-    try {
-      const apt = await firebaseService.getAppointmentById(req.params.id);
-      if (!apt) return res.status(404).json({ error: 'תור לא נמצא' });
-      if (apt.phone !== req.customerPhone) return res.status(403).json({ error: 'Forbidden' });
-      if (apt.status !== 'confirmed') return res.status(400).json({ error: 'תור כבר בוטל או הסתיים' });
-
-      const hoursUntil = DateTime.fromISO(apt.startISO, { zone: TZ }).diff(nowInIsrael(), 'hours').hours;
-      if (hoursUntil < 3) {
-        return res.status(400).json({ error: 'late_cancel', message: 'לא ניתן לבטל פחות מ-3 שעות לפני התור. צור קשר ישיר.' });
-      }
-
-      if (apt.calendarEventId) {
-        try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {}
-      }
-      await firebaseService.updateAppointmentStatus(req.params.id, 'cancelled', { cancelledBy: 'customer' });
-
-      // TODO: notify waiting list via FCM push (WhatsApp removed 20/03/2026)
-      res.json({ success: true });
-    } catch (err) {
-      logger.error('DELETE /api/customer/appointments error', { error: err.message });
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
-
   // ─── Admin: Walk-in ──────────────────────────────────────────────────────────
 
   app.post('/api/admin/appointments/walkin', adminAuth, async (req, res) => {
@@ -705,19 +697,6 @@ function createServer() {
     } catch (err) {
       logger.error('POST /api/admin/broadcast error', { error: err.message });
       if (!res.headersSent) res.status(500).json({ error: 'Server error' });
-    }
-  });
-
-  // ─── Admin: Stats ────────────────────────────────────────────────────────────
-
-  app.get('/api/admin/stats', adminAuth, async (req, res) => {
-    try {
-      const period = req.query.period || 'today';
-      const stats = await statsService.getStats(period);
-      res.json(stats);
-    } catch (err) {
-      logger.error('GET /api/admin/stats error', { error: err.message });
-      res.status(500).json({ error: err.message || 'Server error' });
     }
   });
 

@@ -29,7 +29,7 @@ async function sendToAdmin(title, body, data = {}) {
           dir: 'rtl',
           lang: 'he'
         },
-        fcm_options: { link: '/admin.html' }
+        fcm_options: { link: '/admin/day' }
       }
     });
 

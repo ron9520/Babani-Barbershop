@@ -153,11 +153,21 @@ async function clearAllData() {
 // ─── Services (dynamic price list) ───────────────────────────────────────────
 
 async function getServices() {
+  // Only active services — sorted in JS to avoid composite index requirement
   const snap = await getDb().collection('services')
     .where('active', '==', true)
-    .orderBy('order')
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+async function getAllServices() {
+  // All services including inactive — for admin panel
+  const snap = await getDb().collection('services').get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
 async function getServiceById(id) {
@@ -481,6 +491,7 @@ module.exports = {
   updateAppointmentStatus,
   clearAllData,
   getServices,
+  getAllServices,
   getServiceById,
   createService,
   updateService,
