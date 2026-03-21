@@ -1,13 +1,11 @@
 const cron = require('node-cron');
 const { getAppointmentsInRange, getAppointmentsInRangeAll, getStatsData, updateAppointmentStatus } = require('../services/firebaseService');
+const notificationService = require('../services/notificationService');
 const { nowInIsrael } = require('../utils/timeUtils');
 const logger = require('../utils/logger');
 const config = require('../../config/config.json');
 
-// NOTE: WhatsApp (Green-API / Twilio) removed 20/03/2026.
-// All notification functions below are placeholders — replace sendMessage calls with FCM push when ready.
-
-// ─── Daily Reminders ─────────────────────────────────────────────────────────
+// ─── Daily Reminders (sent day before appointment) ────────────────────────────
 
 async function sendReminders() {
   logger.info('Running daily reminder job');
@@ -22,10 +20,17 @@ async function sendReminders() {
       return;
     }
 
-    logger.info(`Found ${appointments.length} appointments for tomorrow — TODO: send FCM push reminders`);
+    logger.info(`Sending FCM reminders for ${appointments.length} appointments`);
     for (const apt of appointments) {
-      // TODO: replace with FCM push notification
-      logger.info('Reminder pending FCM implementation', { phone: apt.phone, customerName: apt.customerName });
+      try {
+        await notificationService.notifyCustomerReminder(apt.phone, {
+          dateDisplay: apt.dateDisplay,
+          timeDisplay: apt.timeDisplay,
+          serviceName: apt.serviceName
+        });
+      } catch (err) {
+        logger.warn('Reminder failed for appointment', { id: apt.id, error: err.message });
+      }
     }
   } catch (err) {
     logger.error('Reminder job failed', { error: err.message, stack: err.stack });
@@ -43,8 +48,16 @@ async function sendDailySummary() {
     const appointments = await getAppointmentsInRange(startISO, endISO);
     const totalRevenue = appointments.reduce((sum, a) => sum + (a.servicePrice || 0), 0);
 
-    // TODO: replace with FCM push to barber device
-    logger.info('Daily summary', { count: appointments.length, revenue: totalRevenue });
+    const count = appointments.length;
+    if (count === 0) {
+      await notificationService.sendToAdmin('☀️ בוקר טוב! יום ריק', 'אין תורים להיום.');
+    } else {
+      await notificationService.sendToAdmin(
+        `☀️ יש לך ${count} תורים היום`,
+        `הכנסות צפויות: ₪${totalRevenue}`
+      );
+    }
+    logger.info('Daily summary sent', { count, revenue: totalRevenue });
   } catch (err) {
     logger.error('Daily summary failed', { error: err.message });
   }
@@ -65,8 +78,12 @@ async function sendWeeklyReport() {
       return;
     }
 
-    // TODO: replace with FCM push to barber device
-    logger.info('Weekly report', {
+    await notificationService.sendToAdmin(
+      `📊 דוח שבועי — ${stats.completed} תורים`,
+      `הכנסות: ₪${stats.totalRevenue} | ביטולים: ${stats.cancelled}`
+    );
+
+    logger.info('Weekly report sent', {
       total: stats.total,
       completed: stats.completed,
       revenue: stats.totalRevenue
@@ -85,14 +102,17 @@ async function sendReviewRequests() {
     const twoHrAgo = now.minus({ hours: 2 });
 
     const appointments = await getAppointmentsInRangeAll(twoHrAgo.toISO(), oneHrAgo.toISO());
-    const completed = appointments.filter(a => a.status === 'completed' && !a.reviewRequestSent);
+    const completed = appointments.filter(a => a.status === 'completed' && !a.reviewRequestSent && !a.rating);
 
     for (const apt of completed) {
       try {
-        // TODO: replace with FCM push review request
-        logger.info('Review request pending FCM implementation', { phone: apt.phone });
-
+        await notificationService.sendToCustomer(
+          apt.phone,
+          'איך היה? ⭐',
+          `תודה שביקרת ב${config.shop?.name || 'מספרת בבאני'}! כנס לאפליקציה ותן דירוג.`
+        );
         await updateAppointmentStatus(apt.id, apt.status, { reviewRequestSent: true });
+        logger.info('Review request sent', { phone: apt.phone });
       } catch (err) {
         logger.error('Review request failed', { phone: apt.phone, error: err.message });
       }
@@ -118,8 +138,16 @@ async function sendRebookingNudges() {
       if (seen.has(apt.phone)) continue;
       seen.add(apt.phone);
 
-      // TODO: replace with FCM push rebooking nudge
-      logger.info('Rebooking nudge pending FCM implementation', { phone: apt.phone });
+      try {
+        await notificationService.sendToCustomer(
+          apt.phone,
+          'הגיע הזמן לתספורת! ✂️',
+          'עברו 3 שבועות מהביקור האחרון שלך. קבע תור עכשיו!'
+        );
+        logger.info('Rebooking nudge sent', { phone: apt.phone });
+      } catch (err) {
+        logger.warn('Rebooking nudge failed', { phone: apt.phone, error: err.message });
+      }
     }
   } catch (err) {
     logger.error('Rebooking nudge job failed', { error: err.message });

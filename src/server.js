@@ -110,6 +110,19 @@ function createServer() {
     }
   });
 
+  // POST /api/customer/fcm-token — save push token for customer device
+  app.post('/api/customer/fcm-token', customerAuth, async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token) return res.status(400).json({ error: 'token required' });
+      await firebaseService.saveCustomerFCMToken(req.customerPhone, token);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('POST /api/customer/fcm-token error', { error: err.message });
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
   // POST /api/customer/phone-login — temporary phone-only login (upgrade to OTP when SMS is ready)
   app.post('/api/customer/phone-login', async (req, res) => {
     try {
@@ -594,11 +607,10 @@ function createServer() {
         source: 'web'
       });
 
-      // Push notification to barber's device
-      notificationService.sendToAdmin(
-        '📅 תור חדש נקבע',
-        `${customerName} — ${service.name} ב-${timeDisplay} (${dateDisplay})`
-      ).catch(() => {});
+      // Notify barber
+      notificationService.notifyAdminNewBooking({ customerName, serviceName: service.name, dateDisplay, timeDisplay }).catch(() => {});
+      // Notify customer
+      notificationService.notifyCustomerBookingConfirmed(normalizedPhone, { dateDisplay, timeDisplay, serviceName: service.name }).catch(() => {});
 
       res.json({ success: true, dateDisplay, timeDisplay, serviceName: service.name });
     } catch (err) {
@@ -671,7 +683,7 @@ function createServer() {
       for (const apt of active) {
         if (apt.calendarEventId) { try { await calendarService.deleteAppointment(apt.calendarEventId); } catch (_) {} }
         await firebaseService.updateAppointmentStatus(apt.id, 'cancelled', { cancelledBy: 'barber' });
-        // TODO: notify customer via FCM push (WhatsApp removed 20/03/2026)
+        notificationService.notifyCustomerCancelled(apt.phone, { dateDisplay: apt.dateDisplay, timeDisplay: apt.timeDisplay }).catch(() => {});
         cancelled++;
       }
       logger.info('Day cancelled', { date, cancelled });
@@ -735,9 +747,16 @@ function createServer() {
       if (!message || message.trim().length < 5) return res.status(400).json({ error: 'message required' });
       const recipients = await firebaseService.getBroadcastRecipients(daysSince);
       res.json({ success: true, total: recipients.length, status: 'sending' });
-      let sent = 0, failed = 0;
-      // TODO: send broadcast via FCM push (WhatsApp removed 20/03/2026)
-      logger.info('Broadcast: FCM push not yet implemented', { total: recipients.length });
+      // Collect FCM tokens for all recipients and send broadcast
+      const tokens = [];
+      for (const phone of recipients) {
+        try {
+          const profile = await firebaseService.getCustomerProfile(phone);
+          if (profile?.fcmToken) tokens.push(profile.fcmToken);
+        } catch (_) {}
+      }
+      notificationService.sendBroadcast(tokens, '💈 מספרת בבאני', message.trim()).catch(() => {});
+      logger.info('Broadcast sent via FCM', { recipients: recipients.length, tokensFound: tokens.length });
     } catch (err) {
       logger.error('POST /api/admin/broadcast error', { error: err.message });
       if (!res.headersSent) res.status(500).json({ error: 'Server error' });
@@ -877,7 +896,7 @@ function createServer() {
       if (!date || !phone || !customerName) return res.status(400).json({ error: 'date, phone, customerName required' });
       const normalizedPhone = normalizePhone(phone);
       const id = await firebaseService.addToWaitingList({ date, phone: normalizedPhone, customerName, serviceId: serviceId||null, serviceName: serviceName||null });
-      // TODO: notify via FCM push (WhatsApp removed 20/03/2026)
+      notificationService.sendToAdmin('📋 נרשם לרשימת המתנה', `${customerName} ממתין לתור בתאריך ${date}`).catch(() => {});
       res.json({ success: true, id });
     } catch (err) {
       logger.error('POST /api/waiting-list error', { error: err.message });

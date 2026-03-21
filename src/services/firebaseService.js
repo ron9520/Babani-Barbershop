@@ -331,8 +331,17 @@ async function getCustomerProfile(phone) {
     blockedReason: profile.blockedReason || '',
     visitCount,
     lastVisitDate: lastApt?.dateDisplay || null,
-    preferredService: profile.preferredService || lastApt?.serviceName || null
+    preferredService: profile.preferredService || lastApt?.serviceName || null,
+    fcmToken: profile.fcmToken || null
   };
+}
+
+async function saveCustomerFCMToken(phone, token) {
+  await getDb().collection('customers').doc(phone).set(
+    { fcmToken: token },
+    { merge: true }
+  );
+  logger.info('Customer FCM token saved', { phone });
 }
 
 async function upsertCustomerProfile(phone, fields) {
@@ -531,6 +540,7 @@ module.exports = {
   saveAdminFCMToken,
   updateDefaultHours,
   getCustomerProfile,
+  saveCustomerFCMToken,
   upsertCustomerProfile,
   blockCustomer,
   unblockCustomer,
