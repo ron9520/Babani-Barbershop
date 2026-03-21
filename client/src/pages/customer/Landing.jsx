@@ -180,12 +180,13 @@ function DateStep({ booking, setBooking, onNext }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetch(`/api/available-dates?serviceId=${booking.serviceId}`)
       .then(r => r.json())
       .then(d => setDates(d.dates || d || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [booking.serviceId]);
 
   const select = date => {
     setBooking(b => ({ ...b, date, dateDisplay: new Date(date + 'T12:00:00Z').toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) }));
@@ -223,12 +224,13 @@ function TimeStep({ booking, setBooking, onNext }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetch(`/api/available-slots?date=${booking.date}&serviceId=${booking.serviceId}`)
       .then(r => r.json())
       .then(d => setSlots(d.slots || d || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [booking.date, booking.serviceId]);
 
   const select = slot => {
     setBooking(b => ({ ...b, time: slot, timeDisplay: slot }));

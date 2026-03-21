@@ -495,10 +495,10 @@ function createServer() {
     }
   });
 
-  // GET /api/available-slots?date=YYYY-MM-DD — slots for a date (used by React PWA)
+  // GET /api/available-slots?date=YYYY-MM-DD&serviceId=xxx — slots for a date (used by React PWA)
   app.get('/api/available-slots', async (req, res) => {
     try {
-      const { date } = req.query;
+      const { date, serviceId } = req.query;
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({ error: 'date param required (YYYY-MM-DD)' });
       }
@@ -506,13 +506,26 @@ function createServer() {
       const dt = DateTime.fromISO(date, { zone: TZ }).startOf('day');
       if (!dt.isValid) return res.status(400).json({ error: 'Invalid date' });
 
+      // Get service duration for overlap checking
+      let durationMinutes = config.slotDurationMinutes || 30;
+      if (serviceId) {
+        const svc = await firebaseService.getServiceById(serviceId)
+          || config.services?.find(s => s.id === serviceId);
+        if (svc?.durationMinutes) durationMinutes = svc.durationMinutes;
+      }
+
       const hours = await getEffectiveWorkingHours(dt, firebaseService);
       if (!hours) return res.json({ slots: [], closed: true });
 
       const allSlots = generateSlots(dt, hours);
-      const busyTimes = await calendarService.getBusySlotsForDate(dt);
+      const busyIntervals = await calendarService.getBusySlotsForDate(dt);
+
+      // A slot is available only if [slot, slot+duration) doesn't overlap any busy interval
       const slots = allSlots
-        .filter(s => !busyTimes.includes(s.toFormat('HH:mm')))
+        .filter(slotStart => {
+          const slotEnd = slotStart.plus({ minutes: durationMinutes });
+          return !busyIntervals.some(busy => slotStart < busy.end && slotEnd > busy.start);
+        })
         .map(s => s.toFormat('HH:mm'));
 
       res.json({ slots, closed: false });
@@ -537,9 +550,13 @@ function createServer() {
       if (!hours) return res.json({ slots: [], closed: true });
 
       const allSlots = generateSlots(dt, hours);
-      const busyTimes = await calendarService.getBusySlotsForDate(dt);
+      const busyIntervals = await calendarService.getBusySlotsForDate(dt);
+      const slotDuration = config.slotDurationMinutes || 30;
       const slots = allSlots
-        .filter(s => !busyTimes.includes(s.toFormat('HH:mm')))
+        .filter(slotStart => {
+          const slotEnd = slotStart.plus({ minutes: slotDuration });
+          return !busyIntervals.some(busy => slotStart < busy.end && slotEnd > busy.start);
+        })
         .map(s => s.toFormat('HH:mm'));
 
       res.json({ slots, closed: false });
@@ -574,6 +591,7 @@ function createServer() {
       if (!start.isValid) return res.status(400).json({ error: 'Invalid date/time' });
 
       const normalizedPhone = normalizePhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ error: 'מספר טלפון לא תקין' });
 
       // Create calendar event (includes availability double-check)
       const eventId = await calendarService.createAppointment({

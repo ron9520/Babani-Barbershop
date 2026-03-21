@@ -39,7 +39,12 @@ export default function MyAppointments() {
   const load = () => {
     setLoading(true);
     api.get('/customer/appointments')
-      .then(data => setApts(data || []))
+      .then(data => {
+        // API may return array directly or { upcoming, history } object
+        if (Array.isArray(data)) setApts(data);
+        else if (data?.upcoming || data?.history) setApts([...(data.upcoming || []), ...(data.history || [])]);
+        else setApts([]);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };

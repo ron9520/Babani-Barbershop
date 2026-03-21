@@ -91,17 +91,21 @@ async function deleteAppointment(eventId) {
 }
 
 /**
- * Get all busy slots for a given date (Israel DateTime).
- * Returns array of ISO start strings that are booked.
+ * Get all busy intervals for a given date (Israel DateTime).
+ * Returns array of { start, end } DateTime objects so callers can
+ * check overlap against any service duration.
  */
 async function getBusySlotsForDate(dt) {
   const startOfDay = dt.startOf('day').toISO();
-  const endOfDay = dt.endOf('day').toISO();
+  const endOfDay   = dt.endOf('day').toISO();
 
   const events = await getEventsInSlot(startOfDay, endOfDay);
   return events
-    .filter(e => e.start && e.start.dateTime)
-    .map(e => DateTime.fromISO(e.start.dateTime, { zone: TZ }).toFormat('HH:mm'));
+    .filter(e => e.start?.dateTime && e.end?.dateTime)
+    .map(e => ({
+      start: DateTime.fromISO(e.start.dateTime, { zone: TZ }),
+      end:   DateTime.fromISO(e.end.dateTime,   { zone: TZ })
+    }));
 }
 
 /**

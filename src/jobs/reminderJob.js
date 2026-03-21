@@ -21,17 +21,17 @@ async function sendReminders() {
     }
 
     logger.info(`Sending FCM reminders for ${appointments.length} appointments`);
-    for (const apt of appointments) {
-      try {
-        await notificationService.notifyCustomerReminder(apt.phone, {
+    const results = await Promise.allSettled(
+      appointments.map(apt =>
+        notificationService.notifyCustomerReminder(apt.phone, {
           dateDisplay: apt.dateDisplay,
           timeDisplay: apt.timeDisplay,
           serviceName: apt.serviceName
-        });
-      } catch (err) {
-        logger.warn('Reminder failed for appointment', { id: apt.id, error: err.message });
-      }
-    }
+        })
+      )
+    );
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) logger.warn(`${failed} reminders failed to send`);
   } catch (err) {
     logger.error('Reminder job failed', { error: err.message, stack: err.stack });
   }
